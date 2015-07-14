@@ -229,7 +229,7 @@ func checkForPatchesFromPortal(ip string) map[string]interface{} {
 	}
 	defer resp.Body.Close()
 
-	if resp.Status == "200 OK" {
+	if resp.StatusCode == http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
 
 		// We have a real patch
