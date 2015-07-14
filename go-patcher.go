@@ -51,8 +51,11 @@ func main() {
 	checkTomcatDirExists(tomcatDir)
 	checkTomcatOwnership(tomcatDir)
 
+	// Change working directory
+	os.Chdir(tomcatDir)
+
 	// Stop Tomcat
-	out, _ := exec.Command("cd " + tomcatDir + " && bin/catalina.sh stop").CombinedOutput()
+	out, _ := exec.Command("bin/catalina.sh stop").CombinedOutput()
 	time.Sleep(10 * 1000 * time.Millisecond)
 	hardKillProcess(tomcatDir)
 
@@ -118,11 +121,36 @@ func fetchTarball(tarball string) string {
 
 func applyTarballPatch(tarball string) {
 	filePath := fetchTarball(tarball)
+
+	// Unroll the tarball one time to see what to clean out
+	fileMap := unrollTarball(filePath)
+
+	// Clean out old directories
+	for fileMapPath, cnt := range fileMap {
+		webappOrComponent := strings.HasPrefix(fileMapPath, "webapps") || strings.HasPrefix(fileMapPath, "components")
+		if cnt > 3 && webappOrComponent {
+			pathArray := strings.Split(fileMapPath, "/")
+			pathToDelete := pathArray[0] + "/" + pathArray[1]
+			err := os.RemoveAll(pathToDelete)
+			if err != nil {
+				panic("Could not remove path: " + pathToDelete)
+			}
+			//fmt.Println("delete: " + pathToDelete)
+		}
+	}
+
+	// Unroll the tarball again after cleaning out old directories
+	unrollTarball(filePath)
+}
+
+func unrollTarball(filePath string) map[string]int {
+	var m map[string]int
+	m = make(map[string]int)
+
 	file, err := os.Open(filePath)
 
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		panic("Could not open patch: " + filePath)
 	}
 
 	defer file.Close()
@@ -131,8 +159,7 @@ func applyTarballPatch(tarball string) {
 
 	if strings.HasSuffix(filePath, ".gz") {
 		if fileReader, err = gzip.NewReader(file); err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			panic("Could not read GZIP")
 		}
 		defer fileReader.Close()
 	}
@@ -144,17 +171,16 @@ func applyTarballPatch(tarball string) {
 			if err == io.EOF {
 				break
 			}
-			fmt.Println(err)
-			os.Exit(1)
+			panic("Could not read tarball")
 		}
 
 		// get the individual filename and extract to the current directory
 		filename := header.Name
-		fmt.Println("file: " + filename)
+
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// handle directory
-			fmt.Println("Creating directory :", filename)
+			//fmt.Println("Creating directory :", filename)
 			err = os.MkdirAll(filename, os.FileMode(header.Mode)) // or use 0755 if you prefer
 
 			if err != nil {
@@ -164,7 +190,30 @@ func applyTarballPatch(tarball string) {
 
 		case tar.TypeReg:
 			// handle normal file
-			fmt.Println("Untarring :", filename)
+
+			// Strip files that start with dot slash
+			startsWithDot := strings.HasPrefix(filename, "./")
+			if startsWithDot {
+				filename = strings.Replace(filename, "./", "", 1)
+			}
+
+			// See if there are any dirs we should wipe out
+			if len(filename) > len("components/a") {
+				splitPaths := strings.Split(filename, "/")
+				if len(splitPaths) > 1 {
+					//fmt.Println(splitPaths)
+					firstTwoPaths := splitPaths[0] + "/" + splitPaths[1]
+
+					_, ok := m[firstTwoPaths]
+					if ok {
+						m[firstTwoPaths]++
+					} else {
+						m[firstTwoPaths] = 1
+					}
+				}
+			}
+
+			//fmt.Println("Untarring :", filename)
 			writer, err := os.Create(filename)
 
 			if err != nil {
@@ -186,6 +235,8 @@ func applyTarballPatch(tarball string) {
 			fmt.Printf("Unable to untar type : %c in file %s", header.Typeflag, filename)
 		}
 	}
+
+	return m
 }
 
 func checkForProcess(tomcatDir string) bool {
