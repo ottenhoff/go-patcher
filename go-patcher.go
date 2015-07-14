@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,6 +26,7 @@ const processGrepPattern = "ps x|grep -v grep|grep java"
 
 var token = flag.String("token", "", "the custom security token")
 var patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches")
+var patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/", "website with patch files")
 var patcherUID = uint32(os.Getuid())
 
 func init() {
@@ -73,13 +75,50 @@ func main() {
 	fmt.Println(data)
 }
 
-func applyTarballPatch(tarball string) {
-	path := tarball
-	if !pathExists(path) {
-		path = *patchDir + string(os.PathSeparator) + tarball
+func fetchTarball(tarball string) string {
+	fullPath := tarball
+	fileName := path.Base(tarball)
+
+	// See if the file exists in local patch directory
+	if !pathExists(fullPath) {
+		fullPath = *patchDir + string(os.PathSeparator) + fileName
 	}
 
-	file, err := os.Open(tarball)
+	// See if we can pull file from S3
+	if !pathExists(fullPath) {
+		fileWriter, err := os.Create(fullPath)
+		if err != nil {
+			panic("Could not open file: " + fullPath)
+		}
+		defer fileWriter.Close()
+
+		resp, err := http.Get(*patchWeb + "sakai-builder/" + fileName)
+		fmt.Println(*patchWeb + "sakai-builder/" + fileName)
+		fmt.Println(resp.StatusCode)
+		if resp.StatusCode != http.StatusOK {
+			resp, err = http.Get(*patchWeb + "patches/" + fileName)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			n, err := io.Copy(fileWriter, resp.Body)
+			fmt.Println(n)
+			if n > 0 && err != nil {
+				panic("Could not copy from web to local file system")
+			}
+		}
+	}
+
+	if !pathExists(fullPath) {
+		panic("Could not find the patch file: " + fileName)
+	}
+
+	return fullPath
+}
+
+func applyTarballPatch(tarball string) {
+	filePath := fetchTarball(tarball)
+	file, err := os.Open(filePath)
 
 	if err != nil {
 		fmt.Println(err)
@@ -90,7 +129,7 @@ func applyTarballPatch(tarball string) {
 
 	var fileReader io.ReadCloser = file
 
-	if strings.HasSuffix(path, ".gz") {
+	if strings.HasSuffix(filePath, ".gz") {
 		if fileReader, err = gzip.NewReader(file); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
