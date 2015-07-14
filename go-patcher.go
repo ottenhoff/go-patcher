@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -51,13 +52,9 @@ func main() {
 	checkTomcatDirExists(tomcatDir)
 	checkTomcatOwnership(tomcatDir)
 
-	// Change working directory
+	// Change working directory and stop Tomcat
 	os.Chdir(tomcatDir)
-
-	// Stop Tomcat
-	out, _ := exec.Command("bin/catalina.sh stop").CombinedOutput()
-	time.Sleep(10 * 1000 * time.Millisecond)
-	hardKillProcess(tomcatDir)
+	stopTomcat(tomcatDir)
 
 	// Unroll the tarball
 	if len(patchFiles) > 3 {
@@ -71,11 +68,57 @@ func main() {
 		}
 	}
 
-	// Check if process still exists
-	checkForProcess(tomcatDir)
+	// Time to start up Tomcat
+	startTomcat(tomcatDir)
 
-	fmt.Println(out)
+	// Check for server startup in logs/catalina.out
+	z := 60
+	for z < 300 {
+		serverStartupTime := checkServerStartup()
+		if strings.Contains(serverStartupTime, "false") {
+			break
+		}
+		fmt.Println("Server startup: " + serverStartupTime)
+		time.Sleep(10 * 1000 * time.Millisecond)
+		z += 10
+	}
+
 	fmt.Println(data)
+}
+
+func checkServerStartup() string {
+	file, err := os.Open("logs/catalina.out")
+	if err != nil {
+		panic("Could not open logs/catalina.out")
+	}
+
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	scanner := bufio.NewScanner(reader)
+	scanner.Split(bufio.ScanLines)
+
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), "Server startup") {
+			return scanner.Text()
+		}
+	}
+
+	return "false"
+}
+
+func startTomcat(tomcatDir string) {
+	out, _ := exec.Command("bin/catalina.sh start").CombinedOutput()
+	fmt.Println(out)
+}
+
+func stopTomcat(tomcatDir string) {
+	out, _ := exec.Command("bin/catalina.sh stop").CombinedOutput()
+	fmt.Println(out)
+	time.Sleep(10 * 1000 * time.Millisecond)
+	hardKillProcess(tomcatDir)
+	time.Sleep(10 * 1000 * time.Millisecond)
+	hardKillProcess(tomcatDir)
 }
 
 func fetchTarball(tarball string) string {
