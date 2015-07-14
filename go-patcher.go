@@ -27,13 +27,17 @@ var patcherUID = uint32(os.Getuid())
 func init() {
 	flag.Parse()
 	if len(*token) < 1 {
-		panic("Please provide a valid security token")
+		fmt.Println("Please provide a valid security token")
+		os.Exit(1)
 	}
 }
 
 func main() {
 	ip, _ := externalIP()
 	data := checkForPatchesFromPortal(ip)
+	if len(data) < 1 {
+		os.Exit(1)
+	}
 
 	tomcatDir := data["tomcat_dir"].(string)
 	patchFiles := data["files"].(string)
@@ -121,6 +125,8 @@ func checkForPatchesFromPortal(ip string) map[string]interface{} {
 		if len(body) > 5 {
 			json.Unmarshal(body, &data)
 		}
+	} else {
+		fmt.Printf("Bad HTTP fetch: %v \n", resp.Status)
 	}
 
 	return data
