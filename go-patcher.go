@@ -1,10 +1,13 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -18,7 +21,7 @@ import (
 
 const patcherURL = "https://admin.longsight.com/longsight/json/patches"
 const patcherUserAgent = "GoPatcher v1.0"
-const processGrepPattern = "/bin/ps x|grep -v grep|grep java"
+const processGrepPattern = "ps x|grep -v grep|grep java"
 
 var token = flag.String("token", "", "the custom security token")
 var patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches")
@@ -74,6 +77,75 @@ func applyTarballPatch(tarball string) {
 	path := tarball
 	if !pathExists(path) {
 		path = *patchDir + string(os.PathSeparator) + tarball
+	}
+
+	file, err := os.Open(tarball)
+
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	defer file.Close()
+
+	var fileReader io.ReadCloser = file
+
+	if strings.HasSuffix(path, ".gz") {
+		if fileReader, err = gzip.NewReader(file); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		defer fileReader.Close()
+	}
+
+	tarBallReader := tar.NewReader(fileReader)
+	for {
+		header, err := tarBallReader.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		// get the individual filename and extract to the current directory
+		filename := header.Name
+		fmt.Println("file: " + filename)
+		switch header.Typeflag {
+		case tar.TypeDir:
+			// handle directory
+			fmt.Println("Creating directory :", filename)
+			err = os.MkdirAll(filename, os.FileMode(header.Mode)) // or use 0755 if you prefer
+
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+		case tar.TypeReg:
+			// handle normal file
+			fmt.Println("Untarring :", filename)
+			writer, err := os.Create(filename)
+
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			io.Copy(writer, tarBallReader)
+
+			err = os.Chmod(filename, os.FileMode(header.Mode))
+
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			writer.Close()
+		default:
+			fmt.Printf("Unable to untar type : %c in file %s", header.Typeflag, filename)
+		}
 	}
 }
 
