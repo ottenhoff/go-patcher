@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -24,10 +25,18 @@ import (
 const patcherURL = "https://admin.longsight.com/longsight/json/patches"
 const patcherUserAgent = "GoPatcher v1.0"
 const processGrepPattern = "ps x|grep -v grep|grep java"
+const tomcatServerStartupPattern = "Server startup in"
+const (
+	patchSuccess     = "1"  // patchSuccess only when everything goes perfectly right
+	tomcatDown       = "2"  // tomcatDown when tomcat never comes cleanly back
+	tomcatNoShutdown = "4"  // tomcatNoShutdown when we can't kill Tomcat
+	inProgress       = "10" // inProgress to block other patchers
+)
 
 var token = flag.String("token", "", "the custom security token")
 var patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches")
 var patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/", "website with patch files")
+var startupWaitSeconds = flag.Int("waitTime", 240, "amount of time to wait for Tomcat to startup")
 var patcherUID = uint32(os.Getuid())
 
 func init() {
@@ -45,8 +54,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	patchID := data["patch_id"].(string)
 	tomcatDir := data["tomcat_dir"].(string)
 	patchFiles := data["files"].(string)
+
+	// Update the admin portal to exclusively claim this patch
+	updateAdminPortal(inProgress, "0", patchID, "")
 
 	// Make sure the Tomcat directory exists on this host
 	checkTomcatDirExists(tomcatDir)
@@ -72,18 +85,45 @@ func main() {
 	startTomcat(tomcatDir)
 
 	// Check for server startup in logs/catalina.out
-	z := 60
-	for z < 300 {
+	z := 50
+	for z < *startupWaitSeconds {
 		serverStartupTime := checkServerStartup()
-		if strings.Contains(serverStartupTime, "false") {
+		if !strings.Contains(serverStartupTime, "false") {
+			parsedTime := parseServerStartupTime(serverStartupTime)
+			if parsedTime > 0 {
+				updateAdminPortal(patchSuccess, string(parsedTime), patchID, "")
+			} else {
+				updateAdminPortal(tomcatDown, string(parsedTime), patchID, "")
+			}
 			break
 		}
-		fmt.Println("Server startup: " + serverStartupTime)
 		time.Sleep(10 * 1000 * time.Millisecond)
 		z += 10
 	}
 
 	fmt.Println(data)
+}
+
+func parseServerStartupTime(logLine string) int {
+	p := strings.SplitN(string(logLine), " ", 10)
+	for _, ps := range p {
+		k, err := strconv.Atoi(ps)
+		if err == nil && k > 1000 {
+			return k
+		}
+	}
+
+	return -1
+}
+
+func updateAdminPortal(rv string, startup string, patchID string, resultText string) {
+	currentTime := string(time.Now().Unix())
+	postURL := "https://admin.longsight.com/longsight/remote/patch/update"
+	_, err := http.PostForm(postURL, url.Values{"result_value": {rv}, "start_uptime": {startup},
+		"last_attempt": {currentTime}, "patch_id": {patchID}, "result": {resultText}})
+	if err != nil {
+		panic("Could not POST update")
+	}
 }
 
 func checkServerStartup() string {
@@ -99,7 +139,7 @@ func checkServerStartup() string {
 	scanner.Split(bufio.ScanLines)
 
 	for scanner.Scan() {
-		if strings.Contains(scanner.Text(), "Server startup") {
+		if strings.Contains(scanner.Text(), tomcatServerStartupPattern) {
 			return scanner.Text()
 		}
 	}
