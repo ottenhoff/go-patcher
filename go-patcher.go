@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -41,6 +42,7 @@ var patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/",
 var startupWaitSeconds = flag.Int("waitTime", 240, "amount of time to wait for Tomcat to startup")
 var patcherUID = uint32(os.Getuid())
 var logger = stdlog.GetFromFlags()
+var outputBuffer bytes.Buffer
 
 func init() {
 	flag.Parse()
@@ -67,7 +69,7 @@ func main() {
 	patchFiles := data["files"].(string)
 
 	// Update the admin portal to exclusively claim this patch
-	updateAdminPortal(inProgress, "0", patchID, "")
+	updateAdminPortal(inProgress, "0", patchID)
 
 	// Make sure the Tomcat directory exists on this host
 	checkTomcatDirExists(tomcatDir)
@@ -99,9 +101,9 @@ func main() {
 		if !strings.Contains(serverStartupTime, "false") {
 			parsedTime := parseServerStartupTime(serverStartupTime)
 			if parsedTime > 0 {
-				updateAdminPortal(patchSuccess, strconv.FormatInt(parsedTime, 10), patchID, "")
+				updateAdminPortal(patchSuccess, strconv.FormatInt(parsedTime, 10), patchID)
 			} else {
-				updateAdminPortal(tomcatDown, "-1", patchID, "")
+				updateAdminPortal(tomcatDown, "-1", patchID)
 			}
 			break
 		}
@@ -123,14 +125,21 @@ func parseServerStartupTime(logLine string) int64 {
 	return -1
 }
 
-func updateAdminPortal(rv string, startup string, patchID string, resultText string) {
+func updateAdminPortal(rv string, startup string, patchID string) {
+	// Grab the text from the Tomcat startup and shutdown
+	resultText := outputBuffer.String()
+
+	// Unix time converted to a string
 	currentTime := strconv.FormatInt(time.Now().Unix(), 10)
+
 	postURL := "https://admin.longsight.com/longsight/remote/patch/update"
 	urlValues := url.Values{"result_value": {rv}, "start_uptime": {startup},
 		"last_attempt": {string(currentTime)}, "patch_id": {patchID}, "result": {resultText}}
 	logger.Debug("Values being sent to admin portal: ", urlValues)
+
 	resp, err := http.PostForm(postURL, urlValues)
 	logger.Debug("Response from admin portal: ", resp)
+
 	if err != nil {
 		panic("Could not POST update")
 	}
@@ -160,6 +169,7 @@ func checkServerStartup() string {
 func startTomcat(tomcatDir string) {
 	out, _ := exec.Command("bin/catalina.sh start").CombinedOutput()
 	logger.Debug("startTomcat: ", out)
+	outputBuffer.Write(out)
 }
 
 func stopTomcat(tomcatDir string) {
@@ -170,6 +180,7 @@ func stopTomcat(tomcatDir string) {
 	hardKillProcess(tomcatDir)
 	time.Sleep(10 * 1000 * time.Millisecond)
 	hardKillProcess(tomcatDir)
+	outputBuffer.Write(out)
 }
 
 func fetchTarball(tarball string) string {
