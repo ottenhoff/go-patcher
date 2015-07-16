@@ -80,12 +80,12 @@ func main() {
 	tomcatDir := data["tomcat_dir"].(string)
 	patchFiles := data["files"].(string)
 
-	// Update the admin portal to exclusively claim this patch
-	updateAdminPortal(inProgress, "0", patchID)
-
 	// Make sure the Tomcat directory exists on this host
 	checkTomcatDirExists(tomcatDir)
 	checkTomcatOwnership(tomcatDir)
+
+	// Update the admin portal to exclusively claim this patch
+	updateAdminPortal(inProgress, "0", patchID)
 
 	// Change working directory and stop Tomcat
 	os.Chdir(tomcatDir)
@@ -430,7 +430,8 @@ func checkTomcatOwnership(tomcatDir string) {
 	tomcatUID := fi.Sys().(*syscall.Stat_t).Uid
 	logger.Debug("Tomcat ownership uid: ", tomcatUID)
 	if tomcatUID != patcherUID {
-		panic("Patcher UID is different from Tomcat UID")
+		logger.Warning("Patcher UID is different from Tomcat UID", tomcatUID, patcherUID)
+		os.Exit(1)
 	}
 }
 
