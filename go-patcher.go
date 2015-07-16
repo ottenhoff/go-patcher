@@ -20,6 +20,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/alexcesaro/log/stdlog"
 )
 
 const patcherURL = "https://admin.longsight.com/longsight/json/patches"
@@ -38,6 +40,7 @@ var patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches
 var patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/", "website with patch files")
 var startupWaitSeconds = flag.Int("waitTime", 240, "amount of time to wait for Tomcat to startup")
 var patcherUID = uint32(os.Getuid())
+var logger = stdlog.GetFromFlags()
 
 func init() {
 	flag.Parse()
@@ -49,9 +52,14 @@ func init() {
 
 func main() {
 	ip, _ := externalIP()
+	logger.Debug("IPs on this server: " + ip)
+
 	data := checkForPatchesFromPortal(ip)
+	logger.Debug("Patches returned from portal: ", data)
+
+	// If no patches, exit nicely
 	if len(data) < 1 {
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	patchID := data["patch_id"].(string)
@@ -107,6 +115,7 @@ func parseServerStartupTime(logLine string) int64 {
 	for _, ps := range p {
 		k, err := strconv.Atoi(ps)
 		if err == nil && k > 1000 {
+			logger.Debug("Found 'Server startup' in Tomcat catalina.out: ", k)
 			return int64(k)
 		}
 	}
@@ -117,8 +126,11 @@ func parseServerStartupTime(logLine string) int64 {
 func updateAdminPortal(rv string, startup string, patchID string, resultText string) {
 	currentTime := strconv.FormatInt(time.Now().Unix(), 10)
 	postURL := "https://admin.longsight.com/longsight/remote/patch/update"
-	_, err := http.PostForm(postURL, url.Values{"result_value": {rv}, "start_uptime": {startup},
-		"last_attempt": {string(currentTime)}, "patch_id": {patchID}, "result": {resultText}})
+	urlValues := url.Values{"result_value": {rv}, "start_uptime": {startup},
+		"last_attempt": {string(currentTime)}, "patch_id": {patchID}, "result": {resultText}}
+	logger.Debug("Values being sent to admin portal: ", urlValues)
+	resp, err := http.PostForm(postURL, urlValues)
+	logger.Debug("Response from admin portal: ", resp)
 	if err != nil {
 		panic("Could not POST update")
 	}
@@ -147,12 +159,13 @@ func checkServerStartup() string {
 
 func startTomcat(tomcatDir string) {
 	out, _ := exec.Command("bin/catalina.sh start").CombinedOutput()
-	fmt.Println(out)
+	logger.Debug("startTomcat: ", out)
 }
 
 func stopTomcat(tomcatDir string) {
 	out, _ := exec.Command("bin/catalina.sh stop").CombinedOutput()
-	fmt.Println(out)
+	logger.Debug("stopTomcat: ", out)
+
 	time.Sleep(10 * 1000 * time.Millisecond)
 	hardKillProcess(tomcatDir)
 	time.Sleep(10 * 1000 * time.Millisecond)
@@ -162,10 +175,12 @@ func stopTomcat(tomcatDir string) {
 func fetchTarball(tarball string) string {
 	fullPath := tarball
 	fileName := path.Base(tarball)
+	logger.Debug("fetchTarball: ", fileName, fullPath)
 
 	// See if the file exists in local patch directory
 	if !pathExists(fullPath) {
 		fullPath = *patchDir + string(os.PathSeparator) + fileName
+		logger.Debug("fetchTarball new path to try: ", fullPath)
 	}
 
 	// See if we can pull file from S3
@@ -177,8 +192,8 @@ func fetchTarball(tarball string) string {
 		defer fileWriter.Close()
 
 		resp, err := http.Get(*patchWeb + "sakai-builder/" + fileName)
-		fmt.Println(*patchWeb + "sakai-builder/" + fileName)
-		fmt.Println(resp.StatusCode)
+		logger.Debug("Trying to fetch patch: ", *patchWeb+"sakai-builder/"+fileName, resp)
+
 		if resp.StatusCode != http.StatusOK {
 			resp, err = http.Get(*patchWeb + "patches/" + fileName)
 		}
@@ -186,7 +201,7 @@ func fetchTarball(tarball string) string {
 
 		if resp.StatusCode == http.StatusOK {
 			n, err := io.Copy(fileWriter, resp.Body)
-			fmt.Println(n)
+			logger.Debug("Copied remote file bytes: ", n)
 			if n > 0 && err != nil {
 				panic("Could not copy from web to local file system")
 			}
@@ -197,6 +212,7 @@ func fetchTarball(tarball string) string {
 		panic("Could not find the patch file: " + fileName)
 	}
 
+	logger.Debug("Final patch path: " + fullPath)
 	return fullPath
 }
 
@@ -216,7 +232,7 @@ func applyTarballPatch(tarball string) {
 			if err != nil {
 				panic("Could not remove path: " + pathToDelete)
 			}
-			//fmt.Println("delete: " + pathToDelete)
+			logger.Debug("Deleting path: ", pathToDelete)
 		}
 	}
 
@@ -261,12 +277,11 @@ func unrollTarball(filePath string) map[string]int {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// handle directory
-			//fmt.Println("Creating directory :", filename)
 			err = os.MkdirAll(filename, os.FileMode(header.Mode)) // or use 0755 if you prefer
+			logger.Debug("Creating directory: ", filename)
 
 			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
+				panic("Could not create directory: " + filename)
 			}
 
 		case tar.TypeReg:
@@ -276,13 +291,13 @@ func unrollTarball(filePath string) map[string]int {
 			startsWithDot := strings.HasPrefix(filename, "./")
 			if startsWithDot {
 				filename = strings.Replace(filename, "./", "", 1)
+				logger.Debug("Tar file started with a dot: ", filename)
 			}
 
 			// See if there are any dirs we should wipe out
 			if len(filename) > len("components/a") {
 				splitPaths := strings.Split(filename, "/")
 				if len(splitPaths) > 1 {
-					//fmt.Println(splitPaths)
 					firstTwoPaths := splitPaths[0] + "/" + splitPaths[1]
 
 					_, ok := m[firstTwoPaths]
@@ -294,12 +309,11 @@ func unrollTarball(filePath string) map[string]int {
 				}
 			}
 
-			//fmt.Println("Untarring :", filename)
 			writer, err := os.Create(filename)
+			logger.Debug("Unrolled tarball file: ", filename)
 
 			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
+				logger.Error("Could not create file from tarball: ", filename, err)
 			}
 
 			io.Copy(writer, tarBallReader)
@@ -307,13 +321,12 @@ func unrollTarball(filePath string) map[string]int {
 			err = os.Chmod(filename, os.FileMode(header.Mode))
 
 			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
+				logger.Error("Could not chmod file: ", filename, err)
 			}
 
 			writer.Close()
 		default:
-			fmt.Printf("Unable to untar type : %c in file %s", header.Typeflag, filename)
+			logger.Errorf("Unable to untar type : %c in file %s", header.Typeflag, filename)
 		}
 	}
 
@@ -322,6 +335,7 @@ func unrollTarball(filePath string) map[string]int {
 
 func checkForProcess(tomcatDir string) bool {
 	out, _ := exec.Command("bash", "-c", processGrepPattern+"|grep tomcat").Output()
+	logger.Debug("Checking for process: ", out)
 	if len(out) > 0 {
 		return true
 	}
@@ -331,7 +345,6 @@ func checkForProcess(tomcatDir string) bool {
 
 func hardKillProcess(tomcatDir string) {
 	alive := checkForProcess(tomcatDir)
-	//fmt.Printf("alive: %v \n", alive)
 
 	if alive {
 		out, _ := exec.Command("bash", "-c", processGrepPattern+"|grep "+tomcatDir).Output()
@@ -339,6 +352,7 @@ func hardKillProcess(tomcatDir string) {
 		for _, ps := range p {
 			k, err := strconv.Atoi(ps)
 			if err == nil && k > 100 {
+				logger.Debug("Hard killing process: ", k)
 				syscall.Kill(k, 9)
 			}
 		}
@@ -367,9 +381,11 @@ func checkForPatchesFromPortal(ip string) map[string]interface{} {
 		// We have a real patch
 		if len(body) > 5 {
 			json.Unmarshal(body, &data)
+			logger.Debug("Raw data from admin portal: ", data)
 		}
 	} else {
-		fmt.Printf("Bad HTTP fetch: %v \n", resp.Status)
+		logger.Alertf("Bad HTTP fetch: %v \n", resp.Status)
+		os.Exit(1)
 	}
 
 	return data
@@ -389,6 +405,7 @@ func checkTomcatOwnership(tomcatDir string) {
 	}
 	fi, _ := file.Stat()
 	tomcatUID := fi.Sys().(*syscall.Stat_t).Uid
+	logger.Debug("Tomcat ownership uid: ", tomcatUID)
 	if tomcatUID != patcherUID {
 		panic("Patcher UID is different from Tomcat UID")
 	}
