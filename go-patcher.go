@@ -117,10 +117,10 @@ func parseServerStartupTime(logLine string) int {
 }
 
 func updateAdminPortal(rv string, startup string, patchID string, resultText string) {
-	currentTime := string(time.Now().Unix())
+	currentTime := strconv.FormatInt(time.Now().Unix(), 10)
 	postURL := "https://admin.longsight.com/longsight/remote/patch/update"
 	_, err := http.PostForm(postURL, url.Values{"result_value": {rv}, "start_uptime": {startup},
-		"last_attempt": {currentTime}, "patch_id": {patchID}, "result": {resultText}})
+		"last_attempt": {string(currentTime)}, "patch_id": {patchID}, "result": {resultText}})
 	if err != nil {
 		panic("Could not POST update")
 	}
