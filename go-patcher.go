@@ -39,6 +39,7 @@ const (
 var token = flag.String("token", "", "the custom security token")
 var patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches")
 var patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/", "website with patch files")
+var localIP = flag.String("ip", "", "override automatic ip detection")
 var startupWaitSeconds = flag.Int("waitTime", 240, "amount of time to wait for Tomcat to startup")
 var patcherUID = uint32(os.Getuid())
 var logger = stdlog.GetFromFlags()
@@ -54,8 +55,19 @@ func init() {
 
 func main() {
 	ip, _ := externalIP()
-	logger.Debug("IPs on this server: " + ip)
+	logger.Debug("Auto-detected IPs on this server:" + ip)
 
+	// User is overriding the auto-detected IPs
+	if len(*localIP) > 3 {
+		ipJSON, err := json.Marshal(*localIP)
+		if err != nil {
+			panic("Bad ip provided on command-line")
+		}
+		ip = string(ipJSON)
+		logger.Debug("User-overridden IP:", ip)
+	}
+
+	// See if there are any patches available for this IP
 	data := checkForPatchesFromPortal(ip)
 	logger.Debug("Patches returned from portal: ", data)
 
