@@ -91,25 +91,23 @@ func main() {
 		if !strings.Contains(serverStartupTime, "false") {
 			parsedTime := parseServerStartupTime(serverStartupTime)
 			if parsedTime > 0 {
-				updateAdminPortal(patchSuccess, string(parsedTime), patchID, "")
+				updateAdminPortal(patchSuccess, strconv.FormatInt(parsedTime, 10), patchID, "")
 			} else {
-				updateAdminPortal(tomcatDown, string(parsedTime), patchID, "")
+				updateAdminPortal(tomcatDown, "-1", patchID, "")
 			}
 			break
 		}
 		time.Sleep(10 * 1000 * time.Millisecond)
 		z += 10
 	}
-
-	fmt.Println(data)
 }
 
-func parseServerStartupTime(logLine string) int {
+func parseServerStartupTime(logLine string) int64 {
 	p := strings.SplitN(string(logLine), " ", 10)
 	for _, ps := range p {
 		k, err := strconv.Atoi(ps)
 		if err == nil && k > 1000 {
-			return k
+			return int64(k)
 		}
 	}
 
