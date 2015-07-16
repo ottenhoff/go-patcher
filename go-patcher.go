@@ -69,16 +69,17 @@ func main() {
 
 	// See if there are any patches available for this IP
 	data := checkForPatchesFromPortal(ip)
-	logger.Debug("Patches returned from portal: ", data)
 
 	// If no patches, exit nicely
 	if len(data) < 1 {
+		logger.Debug("No patches returned from portal")
 		os.Exit(0)
 	}
 
 	patchID := data["patch_id"].(string)
 	tomcatDir := data["tomcat_dir"].(string)
 	patchFiles := data["files"].(string)
+	logger.Debug("Patches returned from portal: ", data)
 
 	// Make sure the Tomcat directory exists on this host
 	checkTomcatDirExists(tomcatDir)
@@ -89,6 +90,7 @@ func main() {
 
 	// Change working directory and stop Tomcat
 	os.Chdir(tomcatDir)
+	logger.Debug("Chdir to ", tomcatDir)
 	stopTomcat(tomcatDir)
 
 	// Unroll the tarball
