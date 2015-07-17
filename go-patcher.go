@@ -250,7 +250,9 @@ func applyTarballPatch(tarball string) {
 	// Clean out old directories
 	for fileMapPath, cnt := range fileMap {
 		webappOrComponent := strings.HasPrefix(fileMapPath, "webapps") || strings.HasPrefix(fileMapPath, "components")
-		if cnt > 3 && webappOrComponent {
+		isProvidersDir := strings.Contains(fileMapPath, "sakai-provider-pack")
+
+		if cnt > 3 && webappOrComponent && !isProvidersDir {
 			pathArray := strings.Split(fileMapPath, "/")
 			pathToDelete := pathArray[0] + "/" + pathArray[1]
 			err := os.RemoveAll(pathToDelete)
@@ -334,6 +336,12 @@ func unrollTarball(filePath string) map[string]int {
 				}
 			}
 
+			// Skip jldap-beans.xml
+			if strings.Contains(filename, "jldap-bean") || strings.Contains(filename, "sakai-provider-pack/WEB-INF/components.xml") {
+				logger.Debug("Skipping JLDAP file:", filename)
+				continue
+			}
+
 			writer, err := os.Create(filename)
 			logger.Debug("Unrolled tarball file: ", filename)
 
@@ -360,7 +368,7 @@ func unrollTarball(filePath string) map[string]int {
 
 func checkForProcess(tomcatDir string) bool {
 	out, _ := exec.Command("bash", "-c", processGrepPattern+"|grep tomcat").Output()
-	logger.Debug("Checking for process: ", out)
+	logger.Debug("Checking for process: ", string(out))
 	if len(out) > 0 {
 		return true
 	}
