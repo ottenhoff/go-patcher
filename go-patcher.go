@@ -249,17 +249,26 @@ func applyTarballPatch(tarball string) {
 
 	// Clean out old directories
 	for fileMapPath, cnt := range fileMap {
-		webappOrComponent := strings.HasPrefix(fileMapPath, "webapps") || strings.HasPrefix(fileMapPath, "components")
+		isWebapp := strings.HasPrefix(fileMapPath, "webapps")
+		isWarFile := strings.HasSuffix(fileMapPath, ".war")
+		isComponents := strings.HasPrefix(fileMapPath, "components")
 		isProvidersDir := strings.Contains(fileMapPath, "sakai-provider-pack")
+		pathArray := strings.Split(fileMapPath, "/")
+		pathToDelete := pathArray[0] + "/" + pathArray[1]
 
-		if cnt > 3 && webappOrComponent && !isProvidersDir {
-			pathArray := strings.Split(fileMapPath, "/")
-			pathToDelete := pathArray[0] + "/" + pathArray[1]
+		if cnt > 3 && isComponents && !isProvidersDir {
 			err := os.RemoveAll(pathToDelete)
 			if err != nil {
-				panic("Could not remove path: " + pathToDelete)
+				panic("Could not remove components path: " + pathToDelete)
 			}
-			logger.Debug("Deleting path: ", pathToDelete)
+			logger.Debug("Deleting components path: ", pathToDelete)
+		} else if isWebapp && isWarFile {
+			webappFolder := strings.TrimRight(pathToDelete, ".war")
+			err := os.RemoveAll(webappFolder)
+			if err != nil {
+				panic("Could not remove webapp path: " + webappFolder)
+			}
+			logger.Debug("Deleting webapp path: ", webappFolder)
 		}
 	}
 
