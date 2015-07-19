@@ -250,7 +250,7 @@ func applyTarballPatch(tarball string) {
 	// Clean out old directories
 	for fileMapPath, cnt := range fileMap {
 		webappOrComponent := strings.HasPrefix(fileMapPath, "webapps") || strings.HasPrefix(fileMapPath, "components")
-		isSharedJar := isSharedLibJar(fileMapPath)
+		isSharedJar := isLibJar(fileMapPath)
 		isProvidersDir := strings.Contains(fileMapPath, "sakai-provider-pack")
 
 		if cnt > 3 && webappOrComponent && !isProvidersDir {
@@ -277,10 +277,11 @@ func applyTarballPatch(tarball string) {
 	unrollTarball(filePath)
 }
 
-func isSharedLibJar(filename string) bool {
-	startsCorrectly := strings.HasPrefix(filename, "shared/lib")
-	endsCorrectly := strings.HasSuffix(filename, ".jar")
-	return startsCorrectly && endsCorrectly
+func isLibJar(filename string) bool {
+	isSharedJar := strings.HasPrefix(filename, "shared/lib")
+	isCommonJar := strings.HasPrefix(filename, "common/lib")
+	isJarFile := strings.HasSuffix(filename, ".jar")
+	return (isSharedJar || isCommonJar) && isJarFile
 }
 
 func unrollTarball(filePath string) map[string]int {
@@ -341,11 +342,10 @@ func unrollTarball(filePath string) map[string]int {
 			if len(filename) > len("components/a") {
 				splitPaths := strings.Split(filename, "/")
 				if len(splitPaths) > 1 {
-					sharedLibJar := isSharedLibJar(filename)
 					firstTwoPaths := splitPaths[0] + "/" + splitPaths[1]
 
 					_, ok := m[firstTwoPaths]
-					if sharedLibJar {
+					if isLibJar(filename) {
 						m[filename] = 1
 					} else if ok {
 						m[firstTwoPaths]++
