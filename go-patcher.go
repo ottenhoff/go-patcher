@@ -250,6 +250,7 @@ func applyTarballPatch(tarball string) {
 	// Clean out old directories
 	for fileMapPath, cnt := range fileMap {
 		webappOrComponent := strings.HasPrefix(fileMapPath, "webapps") || strings.HasPrefix(fileMapPath, "components")
+		isSharedJar := isSharedLibJar(fileMapPath)
 		isProvidersDir := strings.Contains(fileMapPath, "sakai-provider-pack")
 
 		if cnt > 3 && webappOrComponent && !isProvidersDir {
@@ -260,11 +261,26 @@ func applyTarballPatch(tarball string) {
 				panic("Could not remove path: " + pathToDelete)
 			}
 			logger.Debug("Deleting path: ", pathToDelete)
+		} else if isSharedJar {
+			// Need to wildcard the name to remove old versions
+			wildcardedFilename := replaceNumbers(fileMapPath)
+			wildcardedFilename = strings.Replace(wildcardedFilename, "-SNAPSHOT", "", 1)
+			err := os.RemoveAll(wildcardedFilename)
+			if err != nil {
+				panic("Could not delete wildcarded path: " + wildcardedFilename)
+			}
+			logger.Debug("Delete shared JAR: ", wildcardedFilename)
 		}
 	}
 
 	// Unroll the tarball again after cleaning out old directories
 	unrollTarball(filePath)
+}
+
+func isSharedLibJar(filename string) bool {
+	startsCorrectly := strings.HasPrefix(filename, "shared/lib")
+	endsCorrectly := strings.HasSuffix(filename, ".jar")
+	return startsCorrectly && endsCorrectly
 }
 
 func unrollTarball(filePath string) map[string]int {
@@ -325,10 +341,13 @@ func unrollTarball(filePath string) map[string]int {
 			if len(filename) > len("components/a") {
 				splitPaths := strings.Split(filename, "/")
 				if len(splitPaths) > 1 {
+					sharedLibJar := isSharedLibJar(filename)
 					firstTwoPaths := splitPaths[0] + "/" + splitPaths[1]
 
 					_, ok := m[firstTwoPaths]
-					if ok {
+					if sharedLibJar {
+						m[filename] = 1
+					} else if ok {
 						m[firstTwoPaths]++
 					} else {
 						m[firstTwoPaths] = 1
@@ -492,6 +511,24 @@ func externalIP() (string, error) {
 	}
 
 	return string(b), errors.New("Are you connected to the network?")
+}
+
+func replaceNumbers(s string) string {
+	out := make([]rune, len(s)) // len(s) is bytes not runes, this is just estimation
+
+	i, added := 0, false
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			if added {
+				continue
+			}
+			added, out[i] = true, '*'
+		} else {
+			added, out[i] = false, r
+		}
+		i++
+	}
+	return string(out[:i])
 }
 
 // exists returns whether the given file or directory exists or not
