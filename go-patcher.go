@@ -252,6 +252,7 @@ func applyTarballPatch(tarball string) {
 		isWebapp := strings.HasPrefix(fileMapPath, "webapps")
 		isWarFile := strings.HasSuffix(fileMapPath, ".war")
 		isComponents := strings.HasPrefix(fileMapPath, "components")
+		isSharedJar := isLibJar(fileMapPath)
 		isProvidersDir := strings.Contains(fileMapPath, "sakai-provider-pack")
 		pathArray := strings.Split(fileMapPath, "/")
 		pathToDelete := pathArray[0] + "/" + pathArray[1]
@@ -269,11 +270,27 @@ func applyTarballPatch(tarball string) {
 				panic("Could not remove webapp path: " + webappFolder)
 			}
 			logger.Debug("Deleting webapp path: ", webappFolder)
+		} else if isSharedJar {
+			// Need to wildcard the name to remove old versions
+			wildcardedFilename := replaceNumbers(fileMapPath)
+			wildcardedFilename = strings.Replace(wildcardedFilename, "-SNAPSHOT", "", 1)
+			err := os.RemoveAll(wildcardedFilename)
+			if err != nil {
+				panic("Could not delete wildcarded path: " + wildcardedFilename)
+			}
+			logger.Debug("Delete shared JAR: ", wildcardedFilename)
 		}
 	}
 
 	// Unroll the tarball again after cleaning out old directories
 	unrollTarball(filePath)
+}
+
+func isLibJar(filename string) bool {
+	isSharedJar := strings.HasPrefix(filename, "shared/lib")
+	isCommonJar := strings.HasPrefix(filename, "common/lib")
+	isJarFile := strings.HasSuffix(filename, ".jar")
+	return (isSharedJar || isCommonJar) && isJarFile
 }
 
 func unrollTarball(filePath string) map[string]int {
@@ -337,7 +354,9 @@ func unrollTarball(filePath string) map[string]int {
 					firstTwoPaths := splitPaths[0] + "/" + splitPaths[1]
 
 					_, ok := m[firstTwoPaths]
-					if ok {
+					if isLibJar(filename) {
+						m[filename] = 1
+					} else if ok {
 						m[firstTwoPaths]++
 					} else {
 						m[firstTwoPaths] = 1
@@ -376,7 +395,11 @@ func unrollTarball(filePath string) map[string]int {
 }
 
 func checkForProcess(tomcatDir string) bool {
-	out, _ := exec.Command("bash", "-c", processGrepPattern+"|grep tomcat").Output()
+	out, _ := exec.Command("bash", "-c", processGrepPattern+"|grep "+tomcatDir).Output()
+	numLines := strings.Split(string(out), "\n")
+	if len(numLines) > 1 {
+		panic("Number of processes: " + string(len(numLines)))
+	}
 	logger.Debug("Checking for process: ", string(out))
 	if len(out) > 0 {
 		return true
@@ -501,6 +524,24 @@ func externalIP() (string, error) {
 	}
 
 	return string(b), errors.New("Are you connected to the network?")
+}
+
+func replaceNumbers(s string) string {
+	out := make([]rune, len(s)) // len(s) is bytes not runes, this is just estimation
+
+	i, added := 0, false
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			if added {
+				continue
+			}
+			added, out[i] = true, '*'
+		} else {
+			added, out[i] = false, r
+		}
+		i++
+	}
+	return string(out[:i])
 }
 
 // exists returns whether the given file or directory exists or not
