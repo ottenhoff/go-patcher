@@ -5,6 +5,8 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -151,7 +153,12 @@ func updateAdminPortal(rv string, startup string, patchID string) {
 		"last_attempt": {string(currentTime)}, "patch_id": {patchID}, "result": {resultText}}
 	logger.Debug("Values being sent to admin portal: ", urlValues)
 
-	resp, err := http.PostForm(postURL, urlValues)
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(getCustomCertPool())
+	tr := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: caCertPool}}
+	client := &http.Client{Transport: tr}
+
+	resp, err := client.PostForm(postURL, urlValues)
 	logger.Debug("Response from admin portal: ", resp)
 
 	if err != nil {
@@ -181,14 +188,17 @@ func checkServerStartup() string {
 }
 
 func startTomcat(tomcatDir string) {
-	out, _ := exec.Command("bin/catalina.sh start").CombinedOutput()
+	out, _ := exec.Command("bin/catalina.sh", "start").CombinedOutput()
 	logger.Debug("startTomcat: ", out)
 	outputBuffer.Write(out)
 }
 
 func stopTomcat(tomcatDir string) {
-	out, _ := exec.Command("bin/catalina.sh stop").CombinedOutput()
-	logger.Debug("stopTomcat: ", out)
+	out, err := exec.Command("bin/catalina.sh", "stop").CombinedOutput()
+	if err != nil {
+		logger.Warning("Error when shutting down Tomcat: ", err)
+	}
+	logger.Debug("stopTomcat: ", string(out))
 
 	time.Sleep(10 * 1000 * time.Millisecond)
 	hardKillProcess(tomcatDir)
@@ -217,7 +227,11 @@ func fetchTarball(tarball string) string {
 		defer fileWriter.Close()
 
 		resp, err := http.Get(*patchWeb + "sakai-builder/" + fileName)
-		logger.Debug("Trying to fetch patch: ", *patchWeb+"sakai-builder/"+fileName, resp)
+		if err != nil {
+			logger.Warning("Could not fetch patch: " + *patchWeb + "sakai-builder/" + fileName)
+		} else {
+			logger.Debug("Trying to fetch patch: ", *patchWeb+"sakai-builder/"+fileName, resp)
+		}
 
 		if resp.StatusCode != http.StatusOK {
 			resp, err = http.Get(*patchWeb + "patches/" + fileName)
@@ -397,8 +411,9 @@ func unrollTarball(filePath string) map[string]int {
 func checkForProcess(tomcatDir string) bool {
 	out, _ := exec.Command("bash", "-c", processGrepPattern+"|grep "+tomcatDir).Output()
 	numLines := strings.Split(string(out), "\n")
-	if len(numLines) > 1 {
-		panic("Number of processes: " + string(len(numLines)))
+	logger.Debug("Process lines:", len(numLines))
+	if len(numLines) > 2 {
+		panic("Number of processes: " + string(out))
 	}
 	logger.Debug("Checking for process: ", string(out))
 	if len(out) > 0 {
@@ -433,7 +448,11 @@ func checkForPatchesFromPortal(ip string) map[string]interface{} {
 	req.Header.Set("Content-Type", "text/plain")
 	req.Header.Set("User-Agent", patcherUserAgent)
 
-	client := &http.Client{}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(getCustomCertPool())
+	tr := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: caCertPool}}
+	client := &http.Client{Transport: tr}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		panic(err)
@@ -554,4 +573,34 @@ func pathExists(path string) bool {
 		return false
 	}
 	return true
+}
+
+func getCustomCertPool() []byte {
+	adminCert := `-----BEGIN CERTIFICATE-----
+MIIEJTCCAw2gAwIBAgIDAjp3MA0GCSqGSIb3DQEBCwUAMEIxCzAJBgNVBAYTAlVT
+MRYwFAYDVQQKEw1HZW9UcnVzdCBJbmMuMRswGQYDVQQDExJHZW9UcnVzdCBHbG9i
+YWwgQ0EwHhcNMTQwODI5MjEzOTMyWhcNMjIwNTIwMjEzOTMyWjBHMQswCQYDVQQG
+EwJVUzEWMBQGA1UEChMNR2VvVHJ1c3QgSW5jLjEgMB4GA1UEAxMXUmFwaWRTU0wg
+U0hBMjU2IENBIC0gRzMwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCv
+VJvZWF0eLFbG1eh/9H0WA//Qi1rkjqfdVC7UBMBdmJyNkA+8EGVf2prWRHzAn7Xp
+SowLBkMEu/SW4ib2YQGRZjEiwzQ0Xz8/kS9EX9zHFLYDn4ZLDqP/oIACg8PTH2lS
+1p1kD8mD5xvEcKyU58Okaiy9uJ5p2L4KjxZjWmhxgHsw3hUEv8zTvz5IBVV6s9cQ
+DAP8m/0Ip4yM26eO8R5j3LMBL3+vV8M8SKeDaCGnL+enP/C1DPz1hNFTvA5yT2AM
+QriYrRmIV9cE7Ie/fodOoyH5U/02mEiN1vi7SPIpyGTRzFRIU4uvt2UevykzKdkp
+YEj4/5G8V1jlNS67abZZAgMBAAGjggEdMIIBGTAfBgNVHSMEGDAWgBTAephojYn7
+qwVkDBF9qn1luMrMTjAdBgNVHQ4EFgQUw5zz/NNGCDS7zkZ/oHxb8+IIy1kwEgYD
+VR0TAQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMCAQYwNQYDVR0fBC4wLDAqoCig
+JoYkaHR0cDovL2cuc3ltY2IuY29tL2NybHMvZ3RnbG9iYWwuY3JsMC4GCCsGAQUF
+BwEBBCIwIDAeBggrBgEFBQcwAYYSaHR0cDovL2cuc3ltY2QuY29tMEwGA1UdIARF
+MEMwQQYKYIZIAYb4RQEHNjAzMDEGCCsGAQUFBwIBFiVodHRwOi8vd3d3Lmdlb3Ry
+dXN0LmNvbS9yZXNvdXJjZXMvY3BzMA0GCSqGSIb3DQEBCwUAA4IBAQCjWB7GQzKs
+rC+TeLfqrlRARy1+eI1Q9vhmrNZPc9ZE768LzFvB9E+aj0l+YK/CJ8cW8fuTgZCp
+fO9vfm5FlBaEvexJ8cQO9K8EWYOHDyw7l8NaEpt7BDV7o5UzCHuTcSJCs6nZb0+B
+kvwHtnm8hEqddwnxxYny8LScVKoSew26T++TGezvfU5ho452nFnPjJSxhJf3GrkH
+uLLGTxN5279PURt/aQ1RKsHWFf83UTRlUfQevjhq7A6rvz17OQV79PP7GqHQyH5O
+ZI3NjGFVkP46yl0lD/gdo0p0Vk8aVUBwdSWmMy66S6VdU5oNMOGNX2Esr8zvsJmh
+gP8L8mJMcCaY
+-----END CERTIFICATE-----`
+
+	return []byte(adminCert)
 }
