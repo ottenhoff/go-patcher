@@ -106,7 +106,7 @@ func main() {
 	}
 
 	// Time to start up Tomcat
-	startTomcat(tomcatDir)
+	startTomcat(tomcatDir, patchID)
 
 	// Check for server startup in logs/catalina.out
 	z := 50
@@ -180,9 +180,12 @@ func checkServerStartup() string {
 	return "false"
 }
 
-func startTomcat(tomcatDir string) {
+func startTomcat(tomcatDir string, patchID string) {
+	// Move the old catalina.out so we can look for the ServerStatup cleanly
+	os.Rename("logs/catalina.out", "logs/catalina.out-pre-patch-"+patchID)
+
 	out, _ := exec.Command("bin/catalina.sh", "start").CombinedOutput()
-	logger.Debug("startTomcat: ", out)
+	logger.Debug("startTomcat: ", string(out))
 	outputBuffer.Write(out)
 }
 
