@@ -41,6 +41,7 @@ var patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches
 var patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/", "website with patch files")
 var localIP = flag.String("ip", "", "override automatic ip detection")
 var startupWaitSeconds = flag.Int("waitTime", 240, "amount of time to wait for Tomcat to startup")
+var propertyFiles = [4]string{"instance.properties", "dev.properties", "local.properties", "sakai.properties"}
 var patcherUID = uint32(os.Getuid())
 var logger = stdlog.GetFromFlags()
 var outputBuffer bytes.Buffer
@@ -76,10 +77,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Extract info from the JSON patch info
 	patchID := data["patch_id"].(string)
 	tomcatDir := data["tomcat_dir"].(string)
 	patchFiles := data["files"].(string)
-	logger.Debug("Patches returned from portal: ", data)
+	sakaiProperties := data["sakaiprops"].(string)
+	logger.Debug("Patch returned from portal: ", data)
 
 	// Make sure the Tomcat directory exists on this host
 	checkTomcatDirExists(tomcatDir)
@@ -92,6 +95,11 @@ func main() {
 	os.Chdir(tomcatDir)
 	logger.Debug("Chdir to ", tomcatDir)
 	stopTomcat(tomcatDir)
+
+	// Modify the properties files
+	if len(sakaiProperties) > 0 {
+		modifyPropertyFiles(sakaiProperties, patchID)
+	}
 
 	// Unroll the tarball
 	if len(patchFiles) > 3 {
@@ -535,6 +543,57 @@ func externalIP() (string, error) {
 	}
 
 	return string(b), errors.New("Are you connected to the network?")
+}
+
+func modifyPropertyFiles(rawProperties string, patchID string) {
+	newProperties := strings.Split(rawProperties, "\n")
+
+	// Loop through every property we are patching
+	for _, newPropertyLine := range newProperties {
+		newPropertyKey := strings.TrimRight(newPropertyLine, "=")
+		logger.Debug("New property key=" + newPropertyKey)
+		addedTheNewProperty := false
+
+		// Loop through all known property file names
+		for _, propertyFile := range propertyFiles {
+			fileModified := false
+			propertyFilePath := "sakai/" + propertyFile
+			if pathExists(propertyFilePath) {
+				logger.Debug("Found property file: " + propertyFilePath)
+				input, err := ioutil.ReadFile(propertyFilePath)
+				if err != nil {
+					logger.Error("Could not open property file: " + propertyFilePath)
+				}
+
+				lines := strings.Split(string(input), "\n")
+				for i, line := range lines {
+					if strings.Contains(line, newPropertyKey) {
+						if !strings.Contains(line, "#"+newPropertyKey) {
+							logger.Debug("Found property key: " + line)
+							lines[i] = "#" + line
+							fileModified = true
+						}
+					}
+				}
+
+				output := strings.Join(lines, "\n")
+				if !addedTheNewProperty {
+					output += "\n# Longsight patch ID: " + patchID
+					output += "\n" + newPropertyLine
+					logger.Debug("Added new line to file: "+propertyFilePath, newPropertyLine)
+					fileModified = true
+					addedTheNewProperty = true
+				}
+
+				if fileModified {
+					err = ioutil.WriteFile(propertyFilePath, []byte(output), 0644)
+					if err != nil {
+						logger.Error("Could not write revised file: " + propertyFilePath)
+					}
+				}
+			}
+		}
+	}
 }
 
 func replaceNumbers(s string) string {
