@@ -127,7 +127,9 @@ func main() {
 			} else {
 				updateAdminPortal(tomcatDown, "-1", patchID)
 			}
-			break
+
+			// Exiting after patching!
+			os.Exit(0)
 		}
 		time.Sleep(10 * 1000 * time.Millisecond)
 		z += 10
