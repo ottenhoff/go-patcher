@@ -117,7 +117,7 @@ func main() {
 	startTomcat(tomcatDir, patchID)
 
 	// Check for server startup in logs/catalina.out
-	z := 50
+	z := 42
 	for z < *startupWaitSeconds {
 		serverStartupTime := checkServerStartup()
 		if !strings.Contains(serverStartupTime, "false") {
@@ -131,7 +131,11 @@ func main() {
 		}
 		time.Sleep(10 * 1000 * time.Millisecond)
 		z += 10
+		logger.Debug("Checking logs again in 10 seconds")
 	}
+
+	// Couldn't find success in Tomcat logs
+	updateAdminPortal(tomcatDown, "-1", patchID)
 }
 
 func parseServerStartupTime(logLine string) int64 {
@@ -179,11 +183,15 @@ func checkServerStartup() string {
 	scanner := bufio.NewScanner(reader)
 	scanner.Split(bufio.ScanLines)
 
+	linesScanned := 0
 	for scanner.Scan() {
 		if strings.Contains(scanner.Text(), tomcatServerStartupPattern) {
 			return scanner.Text()
 		}
+		linesScanned++
 	}
+
+	logger.Debug("Scanned " + string(linesScanned) + " in logs/catalina.out")
 
 	return "false"
 }
