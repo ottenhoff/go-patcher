@@ -191,7 +191,7 @@ func checkServerStartup() string {
 		linesScanned++
 	}
 
-	logger.Debug("Scanned " + string(linesScanned) + " in logs/catalina.out")
+	logger.Debug("Scanned lines in logs/catalina.out", linesScanned)
 
 	return "false"
 }
