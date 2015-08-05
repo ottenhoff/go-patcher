@@ -134,7 +134,7 @@ func main() {
 		}
 		time.Sleep(10 * 1000 * time.Millisecond)
 		z += 10
-		logger.Debug("Checking logs again in 10 seconds")
+		logger.Debug("Checking logs again. %v seconds elapsed", z)
 	}
 
 	// Couldn't find success in Tomcat logs
