@@ -60,7 +60,8 @@ func main() {
 
 	// User is overriding the auto-detected IPs
 	if len(*localIP) > 3 {
-		ipJSON, err := json.Marshal(*localIP)
+		var ipArray = [1]string{*localIP}
+		ipJSON, err := json.Marshal(ipArray)
 		if err != nil {
 			panic("Bad ip provided on command-line")
 		}
