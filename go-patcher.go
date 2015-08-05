@@ -117,9 +117,9 @@ func main() {
 	// Time to start up Tomcat
 	startTomcat(tomcatDir, patchID)
 
-	// Check for server startup in logs/catalina.out
-	z := 42
-	for z < *startupWaitSeconds {
+	// Check for server startup in logs/catalina.out after 40 seconds
+	time.Sleep(40 * 1000 * time.Millisecond)
+	for z := 40; z < *startupWaitSeconds; z += 10 {
 		serverStartupTime := checkServerStartup()
 		if !strings.Contains(serverStartupTime, "false") {
 			parsedTime := parseServerStartupTime(serverStartupTime)
@@ -133,7 +133,6 @@ func main() {
 			os.Exit(0)
 		}
 		time.Sleep(10 * 1000 * time.Millisecond)
-		z += 10
 		logger.Debug("Checking logs again. Seconds elapsed:", z)
 	}
 
