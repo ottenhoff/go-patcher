@@ -139,6 +139,7 @@ func main() {
 
 	// Couldn't find success in Tomcat logs
 	updateAdminPortal(tomcatDown, "-1", patchID)
+	os.Exit(0)
 }
 
 func parseServerStartupTime(logLine string) int64 {
