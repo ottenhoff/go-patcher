@@ -298,6 +298,15 @@ func applyTarballPatch(tarball string) {
 				panic("Could not remove components path: " + pathToDelete)
 			}
 			logger.Debug("Deleting components path: ", pathToDelete)
+
+			// Special case with content-review
+			if strings.Contains(pathToDelete, "sakai-content-review-pack-federated") {
+				err := os.RemoveAll("components/sakai-content-review-pack")
+				if err != nil {
+					panic("Could not remove special path: components/sakai-content-review-pack")
+				}
+				logger.Debug("Special path delete: components/sakai-content-review-pack")
+			}
 		} else if isWebapp && isWarFile {
 			webappFolder := strings.TrimRight(pathToDelete, ".war")
 			err := os.RemoveAll(webappFolder)
