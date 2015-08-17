@@ -250,6 +250,7 @@ func fetchTarball(tarball string) string {
 
 		if resp.StatusCode != http.StatusOK {
 			resp, err = http.Get(*patchWeb + "patches/" + fileName)
+			logger.Debug("Trying to fetch patch: ", *patchWeb+"patches/"+fileName, resp)
 		}
 		defer resp.Body.Close()
 
@@ -259,6 +260,8 @@ func fetchTarball(tarball string) string {
 			if n > 0 && err != nil {
 				panic("Could not copy from web to local file system")
 			}
+		} else {
+			logger.Alert("Could not find patch.... proceeding", resp)
 		}
 	}
 
