@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -308,7 +309,7 @@ func applyTarballPatch(tarball string) {
 			// Need to wildcard the name to remove old versions
 			wildcardedFilename := replaceNumbers(fileMapPath)
 			wildcardedFilename = strings.Replace(wildcardedFilename, "-SNAPSHOT", "", 1)
-			err := os.RemoveAll(wildcardedFilename)
+			err := removeFiles(wildcardedFilename)
 			if err != nil {
 				panic("Could not delete wildcarded path: " + wildcardedFilename)
 			}
@@ -640,4 +641,57 @@ func pathExists(path string) bool {
 		return false
 	}
 	return true
+}
+
+// Shortcut to check if the path is a directory
+func isDir(path string) (bool, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false, err
+	}
+	return fi.IsDir(), nil
+}
+
+func removeFiles(wildcardedPath string) error {
+	files, err := filepath.Glob(wildcardedPath)
+	if err != nil {
+		logger.Errorf("Failed to glob %s", wildcardedPath)
+		return err
+	}
+	logger.Infof("Found files matching %s: %v", wildcardedPath, files)
+
+	toSkip := make(map[string]bool)
+	for _, file := range files {
+		dir, err := isDir(file)
+		if err != nil {
+			return err
+		}
+		if dir {
+			toSkip[file] = true
+		} else {
+			realFile, err := filepath.EvalSymlinks(file)
+			if err != nil {
+				logger.Errorf("Failed to eval symlink %s", file, err)
+				return err
+			}
+			if realFile != file {
+				toSkip[file] = true
+				toSkip[realFile] = true
+			}
+		}
+	}
+
+	for _, file := range files {
+		if toSkip[file] {
+			logger.Infof("Skipping file: %s", file)
+		} else {
+			logger.Infof("Removing: %s", file)
+			err = os.Remove(file)
+			if err != nil {
+				logger.Errorf("Failed to remove %s: %s", file, err)
+				return err
+			}
+		}
+	}
+	return nil
 }
