@@ -364,11 +364,13 @@ func unrollTarball(filePath string) map[string]int {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// handle directory
-			err = os.MkdirAll(filename, os.FileMode(header.Mode)) // or use 0755 if you prefer
-			logger.Debug("Creating directory: ", filename)
+			if !pathExists(filename) {
+				err = os.MkdirAll(filename, os.FileMode(header.Mode)) // or use 0755 if you prefer
+				logger.Debug("Creating directory: ", filename)
 
-			if err != nil {
-				panic("Could not create directory: " + filename)
+				if err != nil {
+					panic("Could not create directory: " + filename)
+				}
 			}
 
 		case tar.TypeReg:
