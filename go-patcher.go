@@ -313,7 +313,6 @@ func applyTarballPatch(tarball string) {
 			if err != nil {
 				panic("Could not delete wildcarded path: " + wildcardedFilename)
 			}
-			logger.Debug("Delete shared JAR: ", wildcardedFilename)
 		}
 	}
 
@@ -658,7 +657,7 @@ func removeFiles(wildcardedPath string) error {
 		logger.Errorf("Failed to glob %s", wildcardedPath)
 		return err
 	}
-	logger.Infof("Found files matching %s: %v", wildcardedPath, files)
+	logger.Debugf("Found files matching %s: %v", wildcardedPath, files)
 
 	toSkip := make(map[string]bool)
 	for _, file := range files {
@@ -683,9 +682,9 @@ func removeFiles(wildcardedPath string) error {
 
 	for _, file := range files {
 		if toSkip[file] {
-			logger.Infof("Skipping file: %s", file)
+			logger.Debugf("Skipping file: %s", file)
 		} else {
-			logger.Infof("Removing: %s", file)
+			logger.Debugf("Removing: %s", file)
 			err = os.Remove(file)
 			if err != nil {
 				logger.Errorf("Failed to remove %s: %s", file, err)
