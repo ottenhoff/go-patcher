@@ -29,6 +29,7 @@ const patcherURL = "https://admin.longsight.com/longsight/json/patches"
 const patcherUserAgent = "GoPatcher v1.0"
 const processGrepPattern = "ps x|grep -v grep|grep java"
 const tomcatServerStartupPattern = "Server startup in"
+const legacyPatchDir = "/mnt/massive04/a/sakai/resources/patches/"
 const (
 	patchSuccess     = "1"  // patchSuccess only when everything goes perfectly right
 	tomcatDown       = "2"  // tomcatDown when tomcat never comes cleanly back
@@ -225,7 +226,6 @@ func stopTomcat(tomcatDir string) {
 func fetchTarball(tarball string) string {
 	fullPath := tarball
 	fileName := path.Base(tarball)
-	dirName := path.Dir(tarball)
 	logger.Debug("fetchTarball: ", fileName, fullPath)
 
 	// See if the file exists in local patch directory
@@ -242,16 +242,16 @@ func fetchTarball(tarball string) string {
 		}
 		defer fileWriter.Close()
 
-		resp, err := http.Get(*patchWeb + "sakai-builder/" + fileName)
-		if err != nil {
-			logger.Warning("Could not fetch patch: " + *patchWeb + "sakai-builder/" + fileName)
-		} else {
-			logger.Debug("Trying to fetch patch: ", *patchWeb+"sakai-builder/"+fileName, resp)
+		// Try to correct the path
+		fileToFetch := *patchWeb + "sakai-builder/" + fileName
+		if strings.Contains(tarball, legacyPatchDir) {
+			fileToFetch = *patchWeb + strings.Replace(tarball, legacyPatchDir, "patches/", 1)
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			resp, err = http.Get(*patchWeb + "patches/" + dirName + "/" + fileName)
-			logger.Debug("Trying to fetch patch: ", *patchWeb+"patches/"+dirName+"/"+fileName, resp)
+		resp, err := http.Get(fileToFetch)
+		logger.Debug("Trying to fetch patch: " + fileToFetch)
+		if err != nil {
+			panic("Could not download patch")
 		}
 		defer resp.Body.Close()
 
