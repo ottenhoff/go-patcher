@@ -225,6 +225,7 @@ func stopTomcat(tomcatDir string) {
 func fetchTarball(tarball string) string {
 	fullPath := tarball
 	fileName := path.Base(tarball)
+	dirName := path.Dir(tarball)
 	logger.Debug("fetchTarball: ", fileName, fullPath)
 
 	// See if the file exists in local patch directory
@@ -249,8 +250,8 @@ func fetchTarball(tarball string) string {
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			resp, err = http.Get(*patchWeb + "patches/" + fileName)
-			logger.Debug("Trying to fetch patch: ", *patchWeb+"patches/"+fileName, resp)
+			resp, err = http.Get(*patchWeb + "patches/" + dirName + "/" + fileName)
+			logger.Debug("Trying to fetch patch: ", *patchWeb+"patches/"+dirName+"/"+fileName, resp)
 		}
 		defer resp.Body.Close()
 
@@ -258,6 +259,7 @@ func fetchTarball(tarball string) string {
 			n, err := io.Copy(fileWriter, resp.Body)
 			logger.Debug("Copied remote file bytes: ", n)
 			if n > 0 && err != nil {
+				os.Remove(fullPath)
 				panic("Could not copy from web to local file system")
 			}
 		} else {
