@@ -211,7 +211,7 @@ func startTomcat(tomcatDir string, patchID string) {
 }
 
 func stopTomcat(tomcatDir string) {
-	out, err := exec.Command("bin/catalina.sh", "stop").CombinedOutput()
+	out, err := exec.Command("bin/catalina.sh", "stop", "12", "-force").CombinedOutput()
 	if err != nil {
 		logger.Warning("Error when shutting down Tomcat: ", err)
 	}
