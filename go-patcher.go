@@ -308,7 +308,7 @@ func applyTarballPatch(tarball string) {
 				logger.Debug("Special path delete: components/sakai-content-review-pack")
 			}
 		} else if isWebapp && isWarFile {
-			webappFolder := strings.TrimRight(pathToDelete, ".war")
+			webappFolder := trimSuffix(pathToDelete, ".war")
 			err := os.RemoveAll(webappFolder)
 			if err != nil {
 				panic("Could not remove webapp path: " + webappFolder)
@@ -577,7 +577,8 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 
 	// Loop through every property we are patching
 	for _, newPropertyLine := range newProperties {
-		newPropertyKey := strings.TrimRight(newPropertyLine, "=")
+		newPropertyArray := strings.Split(newPropertyLine, "=")
+		newPropertyKey := newPropertyArray[0]
 		logger.Debug("New property key=" + newPropertyKey)
 		addedTheNewProperty := false
 
@@ -681,7 +682,7 @@ func removeFiles(wildcardedPath string) error {
 		} else {
 			realFile, err := filepath.EvalSymlinks(file)
 			if err != nil {
-				logger.Errorf("Failed to eval symlink %s", file, err)
+				logger.Error("Failed to eval symlink", file, err)
 				return err
 			}
 			if realFile != file {
@@ -704,4 +705,11 @@ func removeFiles(wildcardedPath string) error {
 		}
 	}
 	return nil
+}
+
+func trimSuffix(s, suffix string) string {
+	if strings.HasSuffix(s, suffix) {
+		s = s[:len(s)-len(suffix)]
+	}
+	return s
 }
