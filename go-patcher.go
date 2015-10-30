@@ -447,7 +447,7 @@ func checkForProcess(tomcatDir string) bool {
 		panic("Number of processes: " + string(out))
 	}
 	logger.Debug("Checking for process: ", string(out))
-	if len(out) > 0 {
+	if len(numLines) > 0 {
 		return true
 	}
 
