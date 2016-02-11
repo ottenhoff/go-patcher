@@ -577,9 +577,12 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 
 	// Loop through every property we are patching
 	for _, newPropertyLine := range newProperties {
-		newPropertyArray := strings.Split(newPropertyLine, "=")
-		newPropertyKey := newPropertyArray[0]
-		logger.Debug("New property key=" + newPropertyKey)
+		newPropertyKey := "defaultkeyvalueimpossibletofind"
+		if strings.Contains(newPropertyLine, "=") && !strings.Contains(newPropertyLine, "#") {
+			newPropertyArray := strings.Split(newPropertyLine, "=")
+			newPropertyKey := newPropertyArray[0]
+			logger.Debug("New property key=" + newPropertyKey)
+		}
 		addedTheNewProperty := false
 
 		// Loop through all known property file names
