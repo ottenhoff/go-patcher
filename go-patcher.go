@@ -232,6 +232,12 @@ func fetchTarball(tarball string) string {
 	// See if the file exists in local patch directory
 	if !pathExists(fullPath) {
 		fullPath = *patchDir + string(os.PathSeparator) + fileName
+
+		// Delete old file in our tmp dir
+		if pathExists(fullPath) {
+			os.Remove(fullPath)
+			logger.Debug("Deleted old temp file: ", fullPath)
+		}
 		logger.Debug("fetchTarball new path to try: ", fullPath)
 	}
 
@@ -539,9 +545,9 @@ func externalIP() (string, error) {
 		if iface.Flags&net.FlagLoopback != 0 {
 			continue // loopback interface
 		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			return "", err
+		addrs, addrerr := iface.Addrs()
+		if addrerr != nil {
+			return "", addrerr
 		}
 		for _, addr := range addrs {
 			var ip net.IP
@@ -580,7 +586,7 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 		newPropertyKey := "defaultkeyvalueimpossibletofind"
 		if strings.Contains(newPropertyLine, "=") && !strings.Contains(newPropertyLine, "#") {
 			newPropertyArray := strings.Split(newPropertyLine, "=")
-			newPropertyKey := newPropertyArray[0]
+			newPropertyKey = newPropertyArray[0]
 			logger.Debug("New property key=" + newPropertyKey)
 		}
 		addedTheNewProperty := false
@@ -676,17 +682,17 @@ func removeFiles(wildcardedPath string) error {
 
 	toSkip := make(map[string]bool)
 	for _, file := range files {
-		dir, err := isDir(file)
-		if err != nil {
-			return err
+		dir, derr := isDir(file)
+		if derr != nil {
+			return derr
 		}
 		if dir {
 			toSkip[file] = true
 		} else {
-			realFile, err := filepath.EvalSymlinks(file)
-			if err != nil {
-				logger.Error("Failed to eval symlink", file, err)
-				return err
+			realFile, symerr := filepath.EvalSymlinks(file)
+			if symerr != nil {
+				logger.Error("Failed to eval symlink", file, symerr)
+				return symerr
 			}
 			if realFile != file {
 				toSkip[file] = true
