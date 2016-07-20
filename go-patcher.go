@@ -415,9 +415,12 @@ func unrollTarball(filePath string) map[string]int {
 				}
 			}
 
-			// Skip jldap-beans.xml
-			if strings.Contains(filename, "jldap-bean") || strings.Contains(filename, "sakai-provider-pack/WEB-INF/components.xml") {
+			// Do not overwrite jldap-beans.xml
+			if strings.Contains(filename, "jldap-bean") && pathExists(filename) {
 				logger.Debug("Skipping JLDAP file:", filename)
+				continue
+			} else if strings.Contains(filename, "sakai-provider-pack/WEB-INF/components.xml") && pathExists(filename) {
+				logger.Debug("Skipping providers components:", filename)
 				continue
 			}
 
