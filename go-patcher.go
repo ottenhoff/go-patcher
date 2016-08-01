@@ -336,10 +336,11 @@ func applyTarballPatch(tarball string) {
 }
 
 func isLibJar(filename string) bool {
-	isSharedJar := strings.HasPrefix(filename, "shared/lib")
-	isCommonJar := strings.HasPrefix(filename, "common/lib")
+	isSharedJar := strings.HasPrefix(filename, "shared/lib/")
+	isCommonJar := strings.HasPrefix(filename, "common/lib/")
+	isLibDirJar := strings.HasPrefix(filename, "lib/")
 	isJarFile := strings.HasSuffix(filename, ".jar")
-	return (isSharedJar || isCommonJar) && isJarFile
+	return (isSharedJar || isCommonJar || isLibDirJar) && isJarFile
 }
 
 func unrollTarball(filePath string) map[string]int {
