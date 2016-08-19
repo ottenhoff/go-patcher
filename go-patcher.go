@@ -528,7 +528,7 @@ func checkTomcatOwnership(tomcatDir string) {
 	tomcatUID := fi.Sys().(*syscall.Stat_t).Uid
 	logger.Debug("Tomcat ownership uid: ", tomcatUID)
 	if tomcatUID != patcherUID {
-		logger.Warning("Patcher UID is different from Tomcat UID", tomcatUID, patcherUID)
+		logger.Debug("Patcher UID is different from Tomcat UID", tomcatUID, patcherUID)
 		os.Exit(1)
 	}
 }
