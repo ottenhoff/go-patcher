@@ -323,6 +323,9 @@ func applyTarballPatch(tarball string) {
 		} else if isSharedJar {
 			// Need to wildcard the name to remove old versions
 			wildcardedFilename := replaceNumbers(fileMapPath)
+			if strings.Contains(fileMapPath, "gradebook2") {
+				wildcardedFilename = fileMapPath
+			}
 			wildcardedFilename = strings.Replace(wildcardedFilename, "-SNAPSHOT", "", 1)
 			err := removeFiles(wildcardedFilename)
 			if err != nil {
