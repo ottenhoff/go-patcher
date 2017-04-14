@@ -30,7 +30,7 @@ const patcherURL = "https://admin.longsight.com/longsight/json/patches"
 const patcherUserAgent = "GoPatcher v1.0"
 const processGrepPattern = "ps x|grep -v grep|grep java"
 const tomcatServerStartupPattern = "Server startup in"
-const legacyPatchDir = "/mnt/massive04/a/sakai/resources/patches/"
+const legacyPatchDir = "/patches/"
 const (
 	patchSuccess     = "1"  // patchSuccess only when everything goes perfectly right
 	tomcatDown       = "2"  // tomcatDown when tomcat never comes cleanly back
