@@ -42,7 +42,7 @@ var token = flag.String("token", "", "the custom security token")
 var patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches")
 var patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/", "website with patch files")
 var localIP = flag.String("ip", "", "override automatic ip detection")
-var startupWaitSeconds = flag.Int("waitTime", 240, "amount of time to wait for Tomcat to startup")
+var startupWaitSeconds = flag.Int("waitTime", 280, "amount of time to wait for Tomcat to startup")
 var propertyFiles = [4]string{"instance.properties", "dev.properties", "local.properties", "sakai.properties"}
 var patcherUID = uint32(os.Getuid())
 var logger = stdlog.GetFromFlags()
@@ -98,6 +98,9 @@ func main() {
 	os.Chdir(tomcatDir)
 	logger.Debug("Chdir to ", tomcatDir)
 	stopTomcat(tomcatDir)
+
+	// Clean up the lib so we don't have dupe mysql-connector JARs
+	checkForDupeJars(tomcatDir)
 
 	// Modify the properties files
 	if len(sakaiProperties) > 0 {
@@ -173,6 +176,69 @@ func updateAdminPortal(rv string, startup string, patchID string) {
 
 	if err != nil {
 		panic("Could not POST update")
+	}
+}
+
+func checkForDupeJars(tomcatDir string) {
+	catalinaHome := ""
+	foundConnector := false
+
+	file, err := os.Open("bin/setenv.sh")
+	if err != nil {
+		panic("Could not open bin/setenv.sh")
+	}
+
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+
+	// Find the Tomcat home in the environment vars.
+	for {
+		line, err := reader.ReadString('\n')
+
+		if strings.Contains(line, "CATALINA_HOME") {
+			pathArray := strings.Split(line, "=")
+			catalinaHome = pathArray[1]
+			break
+		}
+
+		if err == io.EOF {
+			break
+		}
+	}
+
+	if catalinaHome != "" {
+		catalinaHome = strings.Trim(catalinaHome, "\" \n\"") + "/lib"
+		files, err := ioutil.ReadDir(catalinaHome)
+		if err != nil {
+			logger.Debug("Could not read catalinaHome", err)
+			return
+		}
+
+		for _, file := range files {
+			if strings.Contains(file.Name(), "mysql-connector") {
+				foundConnector = true
+			}
+		}
+	}
+
+	if foundConnector {
+		files, err := ioutil.ReadDir(tomcatDir + "/lib")
+		if err != nil {
+			logger.Debug("Could not read tomcatDir", err)
+			return
+		}
+
+		for _, file := range files {
+			if strings.Contains(file.Name(), "mysql-connector") {
+				os.Remove(tomcatDir + "/lib/" + file.Name())
+				logger.Debug("Removed " + tomcatDir + "/lib/" + file.Name())
+			}
+			if strings.Contains(file.Name(), "mariadb") {
+				os.Remove(tomcatDir + "/lib/" + file.Name())
+				logger.Debug("Removed " + tomcatDir + "/lib/" + file.Name())
+			}
+		}
 	}
 }
 
