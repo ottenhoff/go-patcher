@@ -99,9 +99,6 @@ func main() {
 	logger.Debug("Chdir to ", tomcatDir)
 	stopTomcat(tomcatDir)
 
-	// Clean up the lib so we don't have dupe mysql-connector JARs
-	checkForDupeJars(tomcatDir)
-
 	// Modify the properties files
 	if len(sakaiProperties) > 0 {
 		modifyPropertyFiles(sakaiProperties, patchID)
@@ -118,6 +115,9 @@ func main() {
 			applyTarballPatch(patchFiles)
 		}
 	}
+
+	// Clean up the lib so we don't have dupe mysql-connector JARs
+	checkForDupeJars(tomcatDir)
 
 	// Time to start up Tomcat
 	startTomcat(tomcatDir, patchID)
