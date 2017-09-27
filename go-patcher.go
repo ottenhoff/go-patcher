@@ -117,7 +117,7 @@ func main() {
 	}
 
 	// Clean up the lib so we don't have dupe mysql-connector JARs
-	checkForDupeJars(tomcatDir)
+	checkForUnnecessaryJars(tomcatDir)
 
 	// Time to start up Tomcat
 	startTomcat(tomcatDir, patchID)
@@ -179,9 +179,8 @@ func updateAdminPortal(rv string, startup string, patchID string) {
 	}
 }
 
-func checkForDupeJars(tomcatDir string) {
+func checkForUnnecessaryJars(tomcatDir string) {
 	catalinaHome := ""
-	foundConnector := false
 
 	file, err := os.Open("bin/setenv.sh")
 	if err != nil {
@@ -209,34 +208,33 @@ func checkForDupeJars(tomcatDir string) {
 
 	if catalinaHome != "" {
 		catalinaHome = strings.Trim(catalinaHome, "\" \n\"") + "/lib"
-		files, err := ioutil.ReadDir(catalinaHome)
+		centralFiles, err := ioutil.ReadDir(catalinaHome)
 		if err != nil {
-			logger.Debug("Could not read catalinaHome", err)
+			logger.Error("Could not read catalinaHome", err)
 			return
 		}
 
-		for _, file := range files {
-			if strings.Contains(file.Name(), "mysql-connector") {
-				foundConnector = true
-			}
-		}
-	}
-
-	if foundConnector {
-		files, err := ioutil.ReadDir(tomcatDir + "/lib")
+		tomcatFiles, err := ioutil.ReadDir(tomcatDir + "/lib")
 		if err != nil {
-			logger.Debug("Could not read tomcatDir", err)
+			logger.Error("Could not read tomcatDir", err)
 			return
 		}
 
-		for _, file := range files {
-			if strings.Contains(file.Name(), "mysql-connector") {
-				os.Remove(tomcatDir + "/lib/" + file.Name())
-				logger.Debug("Removed " + tomcatDir + "/lib/" + file.Name())
+		for _, tomcatFile := range tomcatFiles {
+			for _, centralFile := range centralFiles {
+				// If the file is in central Tomcat lib, no need for it here.
+				if tomcatFile.Name() == centralFile.Name() {
+					os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
+					logger.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
+				} else if strings.Contains(centralFile.Name(), "mysql-connector") && strings.Contains(tomcatFile.Name(), "mysql-connector") {
+					os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
+					logger.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
+				}
 			}
-			if strings.Contains(file.Name(), "mariadb") {
-				os.Remove(tomcatDir + "/lib/" + file.Name())
-				logger.Debug("Removed " + tomcatDir + "/lib/" + file.Name())
+			// We dont use mariadb connector or terracotta
+			if strings.Contains(tomcatFile.Name(), "mariadb") || strings.Contains(tomcatFile.Name(), "terracotta") {
+				os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
+				logger.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
 			}
 		}
 	}
