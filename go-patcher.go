@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/alexcesaro/log/stdlog"
+	cp "github.com/cleversoap/go-cp"
 )
 
 const patcherURL = "https://admin.longsight.com/longsight/json/patches"
@@ -116,6 +117,9 @@ func main() {
 		}
 	}
 
+	// Special patch for vulnerable JSF version
+	patchJsfViewStateVulnerability(tomcatDir)
+
 	// Clean up the lib so we don't have dupe mysql-connector JARs
 	checkForUnnecessaryJars(tomcatDir)
 
@@ -176,6 +180,76 @@ func updateAdminPortal(rv string, startup string, patchID string) {
 
 	if err != nil {
 		panic("Could not POST update")
+	}
+}
+
+func patchJsfViewStateVulnerability(tomcatDir string) {
+	// First fetch the files
+	fetchPatchedJsfLibs()
+
+	unpatchedJars := []string{"jsf-impl-1.2_15.jar", "jsf-api-1.2_15.jar"}
+
+	sakaiPaths := []string{
+		"webapps/sakai-syllabus-tool/WEB-INF/lib/",
+		"webapps/adobeconnect-tool/WEB-INF/lib/",
+		"webapps/sakai-signup-tool/WEB-INF/lib/",
+		"webapps/samigo-app/WEB-INF/lib/",
+	}
+
+	for _, sakaiPath := range sakaiPaths {
+		for _, unpatchedJar := range unpatchedJars {
+			oldJar := tomcatDir + string(os.PathSeparator) + sakaiPath + unpatchedJar
+			newJarName := strings.Replace(unpatchedJar, "1.2_15", "1.2_15-06", 1)
+			newJarTempPath := *patchDir + string(os.PathSeparator) + newJarName
+			newJarDestPath := tomcatDir + string(os.PathSeparator) + sakaiPath + newJarName
+
+			if pathExists(oldJar) && pathExists(newJarTempPath) {
+				cp.Copy(newJarTempPath, newJarDestPath)
+				if pathExists(newJarDestPath) {
+					logger.Debug("Replaced JSF jar with new file: " + newJarDestPath)
+					os.Remove(oldJar)
+				}
+			}
+		}
+	}
+
+}
+
+func fetchPatchedJsfLibs() {
+	patchedLibs := []string{
+		"http://central.maven.org/maven2/javax/faces/jsf-impl/1.2_15-06/jsf-impl-1.2_15-06.jar",
+		"http://central.maven.org/maven2/javax/faces/jsf-api/1.2_15-06/jsf-api-1.2_15-06.jar",
+	}
+
+	for _, mavenPath := range patchedLibs {
+		fileName := path.Base(mavenPath)
+		fullPath := *patchDir + string(os.PathSeparator) + fileName
+
+		if !pathExists(fullPath) {
+			fileWriter, err := os.Create(fullPath)
+			if err != nil {
+				panic("Could not open file: " + fullPath)
+			}
+			defer fileWriter.Close()
+
+			resp, err := http.Get(mavenPath)
+			logger.Debug("Trying to fetch patch: " + mavenPath)
+			if err != nil {
+				panic("Could not download JSF file")
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				n, err := io.Copy(fileWriter, resp.Body)
+				logger.Debug("Copied remote file bytes: ", n)
+				if n > 0 && err != nil {
+					os.Remove(fullPath)
+					panic("Could not copy from Maven central to local file system")
+				}
+			} else {
+				logger.Alert("Could not find JSF JAR .... proceeding", resp)
+			}
+		}
 	}
 }
 
@@ -485,7 +559,10 @@ func unrollTarball(filePath string) map[string]int {
 
 			// Do not overwrite jldap-beans.xml
 			if strings.Contains(filename, "jldap-bean") && pathExists(filename) {
-				logger.Debug("Skipping JLDAP file:", filename)
+				logger.Debug("Skipping JLDAP config:", filename)
+				continue
+			} else if strings.Contains(filename, "sakai-provider-pack/WEB-INF/unboundid") && pathExists(filename) {
+				logger.Debug("Skipping Unboundid LDAP config:", filename)
 				continue
 			} else if strings.Contains(filename, "sakai-provider-pack/WEB-INF/components.xml") && pathExists(filename) {
 				logger.Debug("Skipping providers components:", filename)
