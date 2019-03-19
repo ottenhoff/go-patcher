@@ -151,6 +151,19 @@ func main() {
 }
 
 func parseServerStartupTime(logLine string) int64 {
+	// Tomcat 8.5+
+	if strings.Contains(logLine, "milliseconds") {
+		beginBracket := strings.LastIndex(logLine, "[") + 1
+		endComma := strings.LastIndex(logLine, "]")
+		substr := strings.Replace(logLine[beginBracket:endComma], ",", "", -1)
+		k, err := strconv.Atoi(substr)
+		if err == nil && k > 1000 {
+			logger.Debug("Found 'Server startup' in Tomcat 8.5+ catalina.out: ", k)
+			return int64(k)
+		}
+	}
+
+	// Older Tomcats
 	p := strings.SplitN(string(logLine), " ", 10)
 	for _, ps := range p {
 		k, err := strconv.Atoi(ps)
