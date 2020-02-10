@@ -230,8 +230,8 @@ func patchJsfViewStateVulnerability(tomcatDir string) {
 
 func fetchPatchedJsfLibs() {
 	patchedLibs := []string{
-		"http://central.maven.org/maven2/javax/faces/jsf-impl/1.2_15-06/jsf-impl-1.2_15-06.jar",
-		"http://central.maven.org/maven2/javax/faces/jsf-api/1.2_15-06/jsf-api-1.2_15-06.jar",
+		"https://longsight-patches.s3.amazonaws.com/patches/jsf/jsf-impl-1.2_15-06.jar",
+		"https://longsight-patches.s3.amazonaws.com/patches/jsf/jsf-api-1.2_15-06.jar",
 	}
 
 	for _, mavenPath := range patchedLibs {
@@ -248,7 +248,7 @@ func fetchPatchedJsfLibs() {
 			resp, err := http.Get(mavenPath)
 			logger.Debug("Trying to fetch patch: " + mavenPath)
 			if err != nil {
-				panic("Could not download JSF file")
+				logger.Alert("Could not download JSF file: " + mavenPath)
 			}
 			defer resp.Body.Close()
 
@@ -257,7 +257,7 @@ func fetchPatchedJsfLibs() {
 				logger.Debug("Copied remote file bytes: ", n)
 				if n > 0 && err != nil {
 					os.Remove(fullPath)
-					panic("Could not copy from Maven central to local file system")
+					logger.Alert("Could not copy from Maven central to local file system")
 				}
 			} else {
 				logger.Alert("Could not find JSF JAR .... proceeding", resp)
