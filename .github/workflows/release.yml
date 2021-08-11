@@ -12,7 +12,7 @@ jobs:
         goarch: [arm, amd64]
         exclude:  
           - goarch: arm
-            goos: windows 
+            goos: [windows, darwin]
     steps:
     - uses: actions/checkout@v2
     - uses: wangyoucao577/go-release-action@v1.19
