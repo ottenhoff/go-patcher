@@ -1,0 +1,4 @@
+github.com/alexcesaro/log v0.0.0-20150915221235-61e686294e58 h1:MkpmYfld/S8kXqTYI68DfL8/hHXjHogL120Dy00TIxc=
+github.com/alexcesaro/log v0.0.0-20150915221235-61e686294e58/go.mod h1:YNfsMyWSs+h+PaYkxGeMVmVCX75Zj/pqdjbu12ciCYE=
+github.com/cleversoap/go-cp v0.0.0-20140728221909-c1540332ed3e h1:Cgwu/qjNrSn57a1zdTwKJQ8UhzsbU0V5BofFVrk5gfo=
+github.com/cleversoap/go-cp v0.0.0-20140728221909-c1540332ed3e/go.mod h1:9VGT5cP2QO6FlW/ACUJvKCq/XeLFDK6LAh+dHGjI7m0=
