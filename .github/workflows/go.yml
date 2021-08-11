@@ -18,9 +18,6 @@ jobs:
       with:
         go-version: 1.16
 
-    - name: Dependencies
-      run: go get github.com/alexcesaro/log/stdlog
-
     - name: Build
       run: go build -v go-patcher.go
 
