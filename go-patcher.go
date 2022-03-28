@@ -95,14 +95,20 @@ func main() {
 	// Update the admin portal to exclusively claim this patch
 	updateAdminPortal(inProgress, "0", patchID)
 
-	// Change working directory and stop Tomcat
 	os.Chdir(tomcatDir)
 	logger.Debug("Chdir to ", tomcatDir)
 	stopTomcat(tomcatDir)
 
 	// Modify the properties files
 	if len(sakaiProperties) > 0 {
-		modifyPropertyFiles(sakaiProperties, patchID)
+		// Kill Tomcat and exit for special scenario
+		if strings.TrimSpace(sakaiProperties) == "die" {
+			logger.Errorf("Killing Tomcat per patcher: %s", tomcatDir)
+			updateAdminPortal(patchSuccess, "1", patchID)
+			os.Exit(0)
+		} else {
+			modifyPropertyFiles(sakaiProperties, patchID)
+		}
 	}
 
 	// Unroll the tarball
