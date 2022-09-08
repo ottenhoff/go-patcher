@@ -31,8 +31,10 @@ const patcherURL = "https://admin.longsight.com/longsight/json/patches"
 const patcherUserAgent = "GoPatcher v1.0"
 const processGrepPattern = "ps x|grep -v grep|grep java"
 const tomcatServerStartupPattern = "Server startup in"
+const igniteMismatchPattern = "Fix cache configuration or set system property"
 const legacyPatchDir = "/patches/"
 const (
+	patchDefer       = "0"  // try again in a bit
 	patchSuccess     = "1"  // patchSuccess only when everything goes perfectly right
 	tomcatDown       = "2"  // tomcatDown when tomcat never comes cleanly back
 	tomcatNoShutdown = "4"  // tomcatNoShutdown when we can't kill Tomcat
@@ -136,7 +138,11 @@ func main() {
 	time.Sleep(40 * 1000 * time.Millisecond)
 	for z := 40; z < *startupWaitSeconds; z += 10 {
 		serverStartupTime := checkServerStartup()
-		if !strings.Contains(serverStartupTime, "false") {
+		if strings.Contains(serverStartupTime, "ignite") {
+			logger.Warning("Found ignite error in logs. Will try again later.")
+			updateAdminPortal(patchDefer, "-2", patchID)
+			os.Exit(0)
+		} else if !strings.Contains(serverStartupTime, "false") {
 			parsedTime := parseServerStartupTime(serverStartupTime)
 			if parsedTime > 0 {
 				updateAdminPortal(patchSuccess, strconv.FormatInt(parsedTime, 10), patchID)
@@ -347,6 +353,9 @@ func checkServerStartup() string {
 
 	linesScanned := 0
 	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), igniteMismatchPattern) {
+			return "ignite"
+		}
 		if strings.Contains(scanner.Text(), tomcatServerStartupPattern) {
 			return scanner.Text()
 		}
