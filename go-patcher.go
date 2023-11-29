@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -307,13 +306,13 @@ func checkForUnnecessaryJars(tomcatDir string) {
 
 	if catalinaHome != "" {
 		catalinaHome = strings.Trim(catalinaHome, "\" \n\"") + "/lib"
-		centralFiles, err := ioutil.ReadDir(catalinaHome)
+		centralFiles, err := os.ReadDir(catalinaHome)
 		if err != nil {
 			logger.Error("Could not read catalinaHome", err)
 			return
 		}
 
-		tomcatFiles, err := ioutil.ReadDir(tomcatDir + "/lib")
+		tomcatFiles, err := os.ReadDir(tomcatDir + "/lib")
 		if err != nil {
 			logger.Error("Could not read tomcatDir", err)
 			return
@@ -669,7 +668,7 @@ func checkForPatchesFromPortal(ip string) map[string]interface{} {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 
 		// We have a real patch
 		if len(body) > 5 {
@@ -773,7 +772,7 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 			propertyFilePath := "sakai/" + propertyFile
 			if pathExists(propertyFilePath) {
 				logger.Debug("Found property file: " + propertyFilePath)
-				input, err := ioutil.ReadFile(propertyFilePath)
+				input, err := os.ReadFile(propertyFilePath)
 				if err != nil {
 					logger.Error("Could not open property file: " + propertyFilePath)
 				}
@@ -799,7 +798,7 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 				}
 
 				if fileModified {
-					err = ioutil.WriteFile(propertyFilePath, []byte(output), 0644)
+					err = os.WriteFile(propertyFilePath, []byte(output), 0644)
 					if err != nil {
 						logger.Error("Could not write revised file: " + propertyFilePath)
 					}

@@ -1,1 +1,3 @@
-Readme placeholder
+Use gox to build:
+
+  gox -osarch="linux/arm"
