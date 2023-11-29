@@ -318,6 +318,17 @@ func checkForUnnecessaryJars(tomcatDir string) {
 			return
 		}
 
+		// Look for old ignite/hibernate JAR
+		oldIgniteHibernateJar := ""
+		oldIgniteHibernateCoreJar := ""
+		for _, tomcatFile := range tomcatFiles {
+			if strings.Contains(tomcatFile.Name(), "ignite-hibernate_5.3-") {
+				oldIgniteHibernateJar = tomcatFile.Name()
+			} else if strings.Contains(tomcatFile.Name(), "ignite-hibernate-core-") {
+				oldIgniteHibernateCoreJar = tomcatFile.Name()
+			}
+		}
+
 		for _, tomcatFile := range tomcatFiles {
 			for _, centralFile := range centralFiles {
 				// If the file is in central Tomcat lib, no need for it here.
@@ -333,6 +344,16 @@ func checkForUnnecessaryJars(tomcatDir string) {
 			if strings.Contains(tomcatFile.Name(), "mariadb") || strings.Contains(tomcatFile.Name(), "terracotta") {
 				os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
 				logger.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
+				// Ignite/Hibernate modified some JARs mid-22.x
+			} else if strings.Contains(tomcatFile.Name(), "ignite-hibernate-ext-5.3") {
+				if oldIgniteHibernateJar != "" {
+					os.Remove(tomcatDir + "/lib/" + oldIgniteHibernateJar)
+					logger.Info("Removed " + tomcatDir + "/lib/" + oldIgniteHibernateJar + " because new ignite-hibernate-ext")
+				}
+				if oldIgniteHibernateCoreJar != "" {
+					os.Remove(tomcatDir + "/lib/" + oldIgniteHibernateCoreJar)
+					logger.Info("Removed " + tomcatDir + "/lib/" + oldIgniteHibernateCoreJar + " because new ignite-hibernate-ext")
+				}
 			}
 		}
 	}
