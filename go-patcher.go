@@ -50,15 +50,13 @@ var patcherUID = uint32(os.Getuid())
 var logger = stdlog.GetFromFlags()
 var outputBuffer bytes.Buffer
 
-func init() {
+func main() {
 	flag.Parse()
 	if len(*token) < 1 {
 		fmt.Println("Please provide a valid security token")
 		os.Exit(1)
 	}
-}
 
-func main() {
 	ip, _ := externalIP()
 	logger.Debug("Auto-detected IPs on this server:" + ip)
 
@@ -321,11 +319,17 @@ func checkForUnnecessaryJars(tomcatDir string) {
 		// Look for old ignite/hibernate JAR
 		oldIgniteHibernateJar := ""
 		oldIgniteHibernateCoreJar := ""
+		oldCommonsTextJar := ""
+		oldJaxbJar := ""
 		for _, tomcatFile := range tomcatFiles {
 			if strings.Contains(tomcatFile.Name(), "ignite-hibernate_5.3-") {
 				oldIgniteHibernateJar = tomcatFile.Name()
 			} else if strings.Contains(tomcatFile.Name(), "ignite-hibernate-core-") {
 				oldIgniteHibernateCoreJar = tomcatFile.Name()
+			} else if strings.Contains(tomcatFile.Name(), "commons-text-1.9.jar") {
+				oldCommonsTextJar = tomcatFile.Name()
+			} else if strings.Contains(tomcatFile.Name(), "jaxb-impl-2") {
+				oldJaxbJar = tomcatFile.Name()
 			}
 		}
 
@@ -354,6 +358,12 @@ func checkForUnnecessaryJars(tomcatDir string) {
 					os.Remove(tomcatDir + "/lib/" + oldIgniteHibernateCoreJar)
 					logger.Info("Removed " + tomcatDir + "/lib/" + oldIgniteHibernateCoreJar + " because new ignite-hibernate-ext")
 				}
+			} else if strings.Contains(tomcatFile.Name(), "commons-text-1.10.") && oldCommonsTextJar != "" {
+				os.Remove(tomcatDir + "/lib/" + oldCommonsTextJar)
+				logger.Info("Removed " + tomcatDir + "/lib/" + oldCommonsTextJar)
+			} else if strings.Contains(tomcatFile.Name(), "jaxb-runtime-2.3.6.jar") && oldJaxbJar != "" {
+				os.Remove(tomcatDir + "/lib/" + oldJaxbJar)
+				logger.Info("Removed " + tomcatDir + "/lib/" + oldJaxbJar)
 			}
 		}
 	}
