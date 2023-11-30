@@ -22,8 +22,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexcesaro/log/stdlog"
 	cp "github.com/cleversoap/go-cp"
+	log "github.com/sirupsen/logrus"
 )
 
 const patcherURL = "https://admin.longsight.com/longsight/json/patches"
@@ -40,25 +40,23 @@ const (
 	inProgress       = "10" // inProgress to block other patchers
 )
 
-var token = flag.String("token", "", "the custom security token")
-var patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches")
-var patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/", "website with patch files")
-var localIP = flag.String("ip", "", "override automatic ip detection")
-var startupWaitSeconds = flag.Int("waitTime", 280, "amount of time to wait for Tomcat to startup")
+// Declare flag variables as global variables
+var token *string
+var logLevel *string
+var patchDir *string
+var patchWeb *string
+var localIP *string
+var startupWaitSeconds *int
+
 var propertyFiles = [4]string{"instance.properties", "dev.properties", "local.properties", "sakai.properties"}
 var patcherUID = uint32(os.Getuid())
-var logger = stdlog.GetFromFlags()
 var outputBuffer bytes.Buffer
 
 func main() {
-	flag.Parse()
-	if len(*token) < 1 {
-		fmt.Println("Please provide a valid security token")
-		os.Exit(1)
-	}
+	initParseCommandLineFlags()
 
 	ip, _ := externalIP()
-	logger.Debug("Auto-detected IPs on this server:" + ip)
+	log.Debug("Auto-detected IPs on this server:" + ip)
 
 	// User is overriding the auto-detected IPs
 	if len(*localIP) > 3 {
@@ -68,7 +66,7 @@ func main() {
 			panic("Bad ip provided on command-line")
 		}
 		ip = string(ipJSON)
-		logger.Debug("User-overridden IP:", ip)
+		log.Debug("User-overridden IP:", ip)
 	}
 
 	// See if there are any patches available for this IP
@@ -76,7 +74,7 @@ func main() {
 
 	// If no patches, exit nicely
 	if len(data) < 1 {
-		logger.Debug("No patches returned from portal")
+		log.Debug("No patches returned from portal")
 		os.Exit(0)
 	}
 
@@ -85,7 +83,7 @@ func main() {
 	tomcatDir := data["tomcat_dir"].(string)
 	patchFiles := data["files"].(string)
 	sakaiProperties := data["sakaiprops"].(string)
-	logger.Debug("Patch returned from portal: ", data)
+	log.Debug("Patch returned from portal: ", data)
 
 	// Make sure the Tomcat directory exists on this host
 	checkTomcatDirExists(tomcatDir)
@@ -95,14 +93,14 @@ func main() {
 	updateAdminPortal(inProgress, "0", patchID)
 
 	os.Chdir(tomcatDir)
-	logger.Debug("Chdir to ", tomcatDir)
+	log.Debug("Chdir to ", tomcatDir)
 	stopTomcat(tomcatDir)
 
 	// Modify the properties files
 	if len(sakaiProperties) > 0 {
 		// Kill Tomcat and exit for special scenario
 		if strings.TrimSpace(sakaiProperties) == "die" {
-			logger.Errorf("Killing Tomcat per patcher: %s", tomcatDir)
+			log.Errorf("Killing Tomcat per patcher: %s", tomcatDir)
 			updateAdminPortal(patchSuccess, "1", patchID)
 			os.Exit(0)
 		} else {
@@ -136,7 +134,7 @@ func main() {
 	for z := 40; z < *startupWaitSeconds; z += 10 {
 		serverStartupTime := checkServerStartup()
 		if strings.Contains(serverStartupTime, "ignite") {
-			logger.Warning("Found ignite error in logs. Will try again later.")
+			log.Warning("Found ignite error in logs. Will try again later.")
 			updateAdminPortal(patchDefer, "-2", patchID)
 			os.Exit(0)
 		} else if !strings.Contains(serverStartupTime, "false") {
@@ -151,7 +149,7 @@ func main() {
 			os.Exit(0)
 		}
 		time.Sleep(10 * 1000 * time.Millisecond)
-		logger.Debug("Checking logs again. Seconds elapsed:", z)
+		log.Debug("Checking logs again. Seconds elapsed:", z)
 	}
 
 	// Couldn't find success in Tomcat logs
@@ -167,7 +165,7 @@ func parseServerStartupTime(logLine string) int64 {
 		substr := strings.Replace(logLine[beginBracket:endComma], ",", "", -1)
 		k, err := strconv.Atoi(substr)
 		if err == nil && k > 1000 {
-			logger.Debug("Found 'Server startup' in Tomcat 8.5+ catalina.out: ", k)
+			log.Debug("Found 'Server startup' in Tomcat 8.5+ catalina.out: ", k)
 			return int64(k)
 		}
 	}
@@ -177,7 +175,7 @@ func parseServerStartupTime(logLine string) int64 {
 	for _, ps := range p {
 		k, err := strconv.Atoi(ps)
 		if err == nil && k > 1000 {
-			logger.Debug("Found 'Server startup' in Tomcat catalina.out: ", k)
+			log.Debug("Found 'Server startup' in Tomcat catalina.out: ", k)
 			return int64(k)
 		}
 	}
@@ -195,10 +193,10 @@ func updateAdminPortal(rv string, startup string, patchID string) {
 	postURL := "https://admin.longsight.com/longsight/remote/patch/update"
 	urlValues := url.Values{"result_value": {rv}, "start_uptime": {startup},
 		"last_attempt": {string(currentTime)}, "patch_id": {patchID}, "result": {resultText}}
-	logger.Debug("Values being sent to admin portal: ", urlValues)
+	log.Debug("Values being sent to admin portal: ", urlValues)
 
 	resp, err := http.PostForm(postURL, urlValues)
-	logger.Debug("Response from admin portal: ", resp)
+	log.Debug("Response from admin portal: ", resp)
 
 	if err != nil {
 		panic("Could not POST update")
@@ -228,7 +226,7 @@ func patchJsfViewStateVulnerability(tomcatDir string) {
 			if pathExists(oldJar) && pathExists(newJarTempPath) {
 				cp.Copy(newJarTempPath, newJarDestPath)
 				if pathExists(newJarDestPath) {
-					logger.Debug("Replaced JSF jar with new file: " + newJarDestPath)
+					log.Debug("Replaced JSF jar with new file: " + newJarDestPath)
 					os.Remove(oldJar)
 				}
 			}
@@ -255,21 +253,21 @@ func fetchPatchedJsfLibs() {
 			defer fileWriter.Close()
 
 			resp, err := http.Get(mavenPath)
-			logger.Debug("Trying to fetch patch: " + mavenPath)
+			log.Debug("Trying to fetch patch: " + mavenPath)
 			if err != nil {
-				logger.Alert("Could not download JSF file: " + mavenPath)
+				log.Error("Could not download JSF file: " + mavenPath)
 			}
 			defer resp.Body.Close()
 
 			if resp.StatusCode == http.StatusOK {
 				n, err := io.Copy(fileWriter, resp.Body)
-				logger.Debug("Copied remote file bytes: ", n)
+				log.Debug("Copied remote file bytes: ", n)
 				if n > 0 && err != nil {
 					os.Remove(fullPath)
-					logger.Alert("Could not copy from Maven central to local file system")
+					log.Error("Could not copy from Maven central to local file system")
 				}
 			} else {
-				logger.Alert("Could not find JSF JAR .... proceeding", resp)
+				log.Error("Could not find JSF JAR .... proceeding", resp)
 			}
 		}
 	}
@@ -306,13 +304,13 @@ func checkForUnnecessaryJars(tomcatDir string) {
 		catalinaHome = strings.Trim(catalinaHome, "\" \n\"") + "/lib"
 		centralFiles, err := os.ReadDir(catalinaHome)
 		if err != nil {
-			logger.Error("Could not read catalinaHome", err)
+			log.Error("Could not read catalinaHome", err)
 			return
 		}
 
 		tomcatFiles, err := os.ReadDir(tomcatDir + "/lib")
 		if err != nil {
-			logger.Error("Could not read tomcatDir", err)
+			log.Error("Could not read tomcatDir", err)
 			return
 		}
 
@@ -338,32 +336,32 @@ func checkForUnnecessaryJars(tomcatDir string) {
 				// If the file is in central Tomcat lib, no need for it here.
 				if tomcatFile.Name() == centralFile.Name() {
 					os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
-					logger.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
+					log.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
 				} else if strings.Contains(centralFile.Name(), "mysql-connector") && strings.Contains(tomcatFile.Name(), "mysql-connector") {
 					os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
-					logger.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
+					log.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
 				}
 			}
 			// We dont use mariadb connector or terracotta
 			if strings.Contains(tomcatFile.Name(), "mariadb") || strings.Contains(tomcatFile.Name(), "terracotta") {
 				os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
-				logger.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
+				log.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
 				// Ignite/Hibernate modified some JARs mid-22.x
 			} else if strings.Contains(tomcatFile.Name(), "ignite-hibernate-ext-5.3") {
 				if oldIgniteHibernateJar != "" {
 					os.Remove(tomcatDir + "/lib/" + oldIgniteHibernateJar)
-					logger.Info("Removed " + tomcatDir + "/lib/" + oldIgniteHibernateJar + " because new ignite-hibernate-ext")
+					log.Info("Removed " + tomcatDir + "/lib/" + oldIgniteHibernateJar + " because new ignite-hibernate-ext")
 				}
 				if oldIgniteHibernateCoreJar != "" {
 					os.Remove(tomcatDir + "/lib/" + oldIgniteHibernateCoreJar)
-					logger.Info("Removed " + tomcatDir + "/lib/" + oldIgniteHibernateCoreJar + " because new ignite-hibernate-ext")
+					log.Info("Removed " + tomcatDir + "/lib/" + oldIgniteHibernateCoreJar + " because new ignite-hibernate-ext")
 				}
 			} else if strings.Contains(tomcatFile.Name(), "commons-text-1.10.") && oldCommonsTextJar != "" {
 				os.Remove(tomcatDir + "/lib/" + oldCommonsTextJar)
-				logger.Info("Removed " + tomcatDir + "/lib/" + oldCommonsTextJar)
+				log.Info("Removed " + tomcatDir + "/lib/" + oldCommonsTextJar)
 			} else if strings.Contains(tomcatFile.Name(), "jaxb-runtime-2.3.6.jar") && oldJaxbJar != "" {
 				os.Remove(tomcatDir + "/lib/" + oldJaxbJar)
-				logger.Info("Removed " + tomcatDir + "/lib/" + oldJaxbJar)
+				log.Info("Removed " + tomcatDir + "/lib/" + oldJaxbJar)
 			}
 		}
 	}
@@ -392,7 +390,7 @@ func checkServerStartup() string {
 		linesScanned++
 	}
 
-	logger.Debug("Scanned lines in logs/catalina.out", linesScanned)
+	log.Debug("Scanned lines in logs/catalina.out", linesScanned)
 
 	return "false"
 }
@@ -402,16 +400,16 @@ func startTomcat(tomcatDir string, patchID string) {
 	os.Rename("logs/catalina.out", "logs/catalina.out-pre-patch-"+patchID)
 
 	out, _ := exec.Command("bin/catalina.sh", "start").CombinedOutput()
-	logger.Debug("startTomcat: ", string(out))
+	log.Debug("startTomcat: ", string(out))
 	outputBuffer.Write(out)
 }
 
 func stopTomcat(tomcatDir string) {
 	out, err := exec.Command("bin/catalina.sh", "stop", "32", "-force").CombinedOutput()
 	if err != nil {
-		logger.Warning("Error when shutting down Tomcat: ", err)
+		log.Warning("Error when shutting down Tomcat: ", err)
 	}
-	logger.Debug("stopTomcat: ", string(out))
+	log.Debug("stopTomcat: ", string(out))
 
 	time.Sleep(20 * 1000 * time.Millisecond)
 	hardKillProcess(tomcatDir)
@@ -423,7 +421,7 @@ func stopTomcat(tomcatDir string) {
 func fetchTarball(tarball string) string {
 	fullPath := tarball
 	fileName := path.Base(tarball)
-	logger.Debug("fetchTarball: ", fileName, fullPath)
+	log.Debug("fetchTarball: ", fileName, fullPath)
 
 	// See if the file exists in local patch directory
 	if !pathExists(fullPath) {
@@ -432,9 +430,9 @@ func fetchTarball(tarball string) string {
 		// Delete old file in our tmp dir
 		if pathExists(fullPath) {
 			os.Remove(fullPath)
-			logger.Debug("Deleted old temp file: ", fullPath)
+			log.Debug("Deleted old temp file: ", fullPath)
 		}
-		logger.Debug("fetchTarball new path to try: ", fullPath)
+		log.Debug("fetchTarball new path to try: ", fullPath)
 	}
 
 	// See if we can pull file from S3
@@ -452,7 +450,7 @@ func fetchTarball(tarball string) string {
 		}
 
 		resp, err := http.Get(fileToFetch)
-		logger.Debug("Trying to fetch patch: " + fileToFetch)
+		log.Debug("Trying to fetch patch: " + fileToFetch)
 		if err != nil {
 			panic("Could not download patch")
 		}
@@ -460,13 +458,13 @@ func fetchTarball(tarball string) string {
 
 		if resp.StatusCode == http.StatusOK {
 			n, err := io.Copy(fileWriter, resp.Body)
-			logger.Debug("Copied remote file bytes: ", n)
+			log.Debug("Copied remote file bytes: ", n)
 			if n > 0 && err != nil {
 				os.Remove(fullPath)
 				panic("Could not copy from web to local file system")
 			}
 		} else {
-			logger.Alert("Could not find patch.... proceeding", resp)
+			log.Error("Could not find patch.... proceeding", resp)
 		}
 	}
 
@@ -474,7 +472,7 @@ func fetchTarball(tarball string) string {
 		panic("Could not find the patch file: " + fileName)
 	}
 
-	logger.Debug("Final patch path: " + fullPath)
+	log.Debug("Final patch path: " + fullPath)
 	return fullPath
 }
 
@@ -499,7 +497,7 @@ func applyTarballPatch(tarball string) {
 			if err != nil {
 				panic("Could not remove components path: " + pathToDelete)
 			}
-			logger.Debug("Deleting components path: ", pathToDelete)
+			log.Debug("Deleting components path: ", pathToDelete)
 
 			// Special case with content-review
 			if strings.Contains(pathToDelete, "sakai-content-review-pack-federated") {
@@ -507,7 +505,7 @@ func applyTarballPatch(tarball string) {
 				if err != nil {
 					panic("Could not remove special path: components/sakai-content-review-pack")
 				}
-				logger.Debug("Special path delete: components/sakai-content-review-pack")
+				log.Debug("Special path delete: components/sakai-content-review-pack")
 			}
 		} else if isWebapp && isWarFile {
 			webappFolder := trimSuffix(pathToDelete, ".war")
@@ -515,7 +513,7 @@ func applyTarballPatch(tarball string) {
 			if err != nil {
 				panic("Could not remove webapp path: " + webappFolder)
 			}
-			logger.Debug("Deleting webapp path: ", webappFolder)
+			log.Debug("Deleting webapp path: ", webappFolder)
 		} else if isSharedJar {
 			// Need to wildcard the name to remove old versions
 			wildcardedFilename := replaceNumbers(fileMapPath)
@@ -581,7 +579,7 @@ func unrollTarball(filePath string) map[string]int {
 			// handle directory
 			if !pathExists(filename) {
 				err = os.MkdirAll(filename, os.FileMode(header.Mode)) // or use 0755 if you prefer
-				logger.Debug("Creating directory: ", filename)
+				log.Debug("Creating directory: ", filename)
 
 				if err != nil {
 					panic("Could not create directory: " + filename)
@@ -595,7 +593,7 @@ func unrollTarball(filePath string) map[string]int {
 			startsWithDot := strings.HasPrefix(filename, "./")
 			if startsWithDot {
 				filename = strings.Replace(filename, "./", "", 1)
-				logger.Debug("Tar file started with a dot: ", filename)
+				log.Debug("Tar file started with a dot: ", filename)
 			}
 
 			// See if there are any dirs we should wipe out
@@ -617,21 +615,21 @@ func unrollTarball(filePath string) map[string]int {
 
 			// Do not overwrite jldap-beans.xml
 			if strings.Contains(filename, "jldap-bean") && pathExists(filename) {
-				logger.Debug("Skipping JLDAP config:", filename)
+				log.Debug("Skipping JLDAP config:", filename)
 				continue
 			} else if strings.Contains(filename, "sakai-provider-pack/WEB-INF/unboundid") && pathExists(filename) {
-				logger.Debug("Skipping Unboundid LDAP config:", filename)
+				log.Debug("Skipping Unboundid LDAP config:", filename)
 				continue
 			} else if strings.Contains(filename, "sakai-provider-pack/WEB-INF/components.xml") && pathExists(filename) {
-				logger.Debug("Skipping providers components:", filename)
+				log.Debug("Skipping providers components:", filename)
 				continue
 			}
 
 			writer, err := os.Create(filename)
-			logger.Debug("Unrolled tarball file: ", filename)
+			log.Debug("Unrolled tarball file: ", filename)
 
 			if err != nil {
-				logger.Error("Could not create file from tarball: ", filename, err)
+				log.Error("Could not create file from tarball: ", filename, err)
 			}
 
 			io.Copy(writer, tarBallReader)
@@ -639,12 +637,12 @@ func unrollTarball(filePath string) map[string]int {
 			err = os.Chmod(filename, os.FileMode(header.Mode))
 
 			if err != nil {
-				logger.Error("Could not chmod file: ", filename, err)
+				log.Error("Could not chmod file: ", filename, err)
 			}
 
 			writer.Close()
 		default:
-			logger.Errorf("Unable to untar type : %c in file %s", header.Typeflag, filename)
+			log.Errorf("Unable to untar type : %c in file %s", header.Typeflag, filename)
 		}
 	}
 
@@ -654,11 +652,11 @@ func unrollTarball(filePath string) map[string]int {
 func checkForProcess(tomcatDir string) bool {
 	out, _ := exec.Command("bash", "-c", processGrepPattern+"|grep "+tomcatDir).Output()
 	numLines := strings.Split(string(out), "\n")
-	logger.Debug("Process lines:", len(numLines))
+	log.Debug("Process lines:", len(numLines))
 	if len(numLines) > 2 {
 		panic("Number of processes: " + string(out))
 	}
-	logger.Debug("Checking for process: ", string(out))
+	log.Debug("Checking for process: ", string(out))
 	if len(numLines) > 0 {
 		return true
 	}
@@ -675,7 +673,7 @@ func hardKillProcess(tomcatDir string) {
 		for _, ps := range p {
 			k, err := strconv.Atoi(ps)
 			if err == nil && k > 100 {
-				logger.Debug("Hard killing process: ", k)
+				log.Debug("Hard killing process: ", k)
 				syscall.Kill(k, 9)
 			}
 		}
@@ -704,10 +702,10 @@ func checkForPatchesFromPortal(ip string) map[string]interface{} {
 		// We have a real patch
 		if len(body) > 5 {
 			json.Unmarshal(body, &data)
-			logger.Debug("Raw data from admin portal: ", data)
+			log.Debug("Raw data from admin portal: ", data)
 		}
 	} else {
-		logger.Alertf("Bad HTTP fetch: %v \n", resp.Status)
+		log.Errorf("Bad HTTP fetch: %v \n", resp.Status)
 		os.Exit(1)
 	}
 
@@ -728,9 +726,9 @@ func checkTomcatOwnership(tomcatDir string) {
 	}
 	fi, _ := file.Stat()
 	tomcatUID := fi.Sys().(*syscall.Stat_t).Uid
-	logger.Debug("Tomcat ownership uid: ", tomcatUID)
+	log.Debug("Tomcat ownership uid: ", tomcatUID)
 	if tomcatUID != patcherUID {
-		logger.Debug("Patcher UID is different from Tomcat UID", tomcatUID, patcherUID)
+		log.Debug("Patcher UID is different from Tomcat UID", tomcatUID, patcherUID)
 		os.Exit(1)
 	}
 }
@@ -793,7 +791,7 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 		if strings.Contains(newPropertyLine, "=") && !strings.Contains(newPropertyLine, "#") {
 			newPropertyArray := strings.Split(newPropertyLine, "=")
 			newPropertyKey = newPropertyArray[0]
-			logger.Debug("New property key=" + newPropertyKey)
+			log.Debug("New property key=" + newPropertyKey)
 		}
 		addedTheNewProperty := false
 
@@ -802,17 +800,17 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 			fileModified := false
 			propertyFilePath := "sakai/" + propertyFile
 			if pathExists(propertyFilePath) {
-				logger.Debug("Found property file: " + propertyFilePath)
+				log.Debug("Found property file: " + propertyFilePath)
 				input, err := os.ReadFile(propertyFilePath)
 				if err != nil {
-					logger.Error("Could not open property file: " + propertyFilePath)
+					log.Error("Could not open property file: " + propertyFilePath)
 				}
 
 				lines := strings.Split(string(input), "\n")
 				for i, line := range lines {
 					if strings.Contains(line, newPropertyKey) {
 						if !strings.Contains(line, "#"+newPropertyKey) {
-							logger.Debug("Found property key: " + line)
+							log.Debug("Found property key: " + line)
 							lines[i] = "#" + line
 							fileModified = true
 						}
@@ -823,7 +821,7 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 				if !addedTheNewProperty {
 					output += "\n# Longsight patch ID: " + patchID
 					output += "\n" + newPropertyLine
-					logger.Debug("Added new line to file: "+propertyFilePath, newPropertyLine)
+					log.Debug("Added new line to file: "+propertyFilePath, newPropertyLine)
 					fileModified = true
 					addedTheNewProperty = true
 				}
@@ -831,7 +829,7 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 				if fileModified {
 					err = os.WriteFile(propertyFilePath, []byte(output), 0644)
 					if err != nil {
-						logger.Error("Could not write revised file: " + propertyFilePath)
+						log.Error("Could not write revised file: " + propertyFilePath)
 					}
 				}
 			}
@@ -839,22 +837,33 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 	}
 }
 
+// replaceNumbers replaces consecutive digits in a string with a single asterisk.
 func replaceNumbers(s string) string {
-	out := make([]rune, len(s)) // len(s) is bytes not runes, this is just estimation
+	// Initialize an output slice of runes to store the transformed characters.
+	// The length is estimated based on the input string length.
+	outputRunes := make([]rune, 0, len(s))
 
-	i, added := 0, false
-	for _, r := range s {
-		if r >= '0' && r <= '9' {
-			if added {
-				continue
+	// Track whether the last rune was a digit to handle consecutive digits.
+	lastWasDigit := false
+
+	// Iterate over each rune in the input string.
+	for _, currentRune := range s {
+		// Check if the current rune is a digit.
+		if currentRune >= '0' && currentRune <= '9' {
+			// If the last rune was not a digit, add an asterisk to the output.
+			if !lastWasDigit {
+				outputRunes = append(outputRunes, '*')
+				lastWasDigit = true
 			}
-			added, out[i] = true, '*'
-		} else {
-			added, out[i] = false, r
+			// Skip adding the digit itself.
+			continue
 		}
-		i++
+		// For non-digit runes, add them to the output and set lastWasDigit to false.
+		outputRunes = append(outputRunes, currentRune)
+		lastWasDigit = false
 	}
-	return string(out[:i])
+	// Convert the output runes back to a string and return it.
+	return string(outputRunes)
 }
 
 // exists returns whether the given file or directory exists or not
@@ -881,10 +890,10 @@ func isDir(path string) (bool, error) {
 func removeFiles(wildcardedPath string) error {
 	files, err := filepath.Glob(wildcardedPath)
 	if err != nil {
-		logger.Errorf("Failed to glob %s", wildcardedPath)
+		log.Errorf("Failed to glob %s", wildcardedPath)
 		return err
 	}
-	logger.Debugf("Found files matching %s: %v", wildcardedPath, files)
+	log.Debugf("Found files matching %s: %v", wildcardedPath, files)
 
 	toSkip := make(map[string]bool)
 	for _, file := range files {
@@ -897,7 +906,7 @@ func removeFiles(wildcardedPath string) error {
 		} else {
 			realFile, symerr := filepath.EvalSymlinks(file)
 			if symerr != nil {
-				logger.Error("Failed to eval symlink", file, symerr)
+				log.Error("Failed to eval symlink", file, symerr)
 				return symerr
 			}
 			if realFile != file {
@@ -909,12 +918,12 @@ func removeFiles(wildcardedPath string) error {
 
 	for _, file := range files {
 		if toSkip[file] {
-			logger.Debugf("Skipping file: %s", file)
+			log.Debugf("Skipping file: %s", file)
 		} else {
-			logger.Debugf("Removing: %s", file)
+			log.Debugf("Removing: %s", file)
 			err = os.Remove(file)
 			if err != nil {
-				logger.Errorf("Failed to remove %s: %s", file, err)
+				log.Errorf("Failed to remove %s: %s", file, err)
 				return err
 			}
 		}
@@ -927,4 +936,39 @@ func trimSuffix(s, suffix string) string {
 		s = s[:len(s)-len(suffix)]
 	}
 	return s
+}
+
+func initParseCommandLineFlags() {
+	token = flag.String("token", "test-token", "the custom security token")
+	logLevel = flag.String("log", "info", "Log level (debug, info, warn, error, fatal, panic)")
+	patchDir = flag.String("dir", "/tmp", "directory to store downloaded patches")
+	patchWeb = flag.String("web", "https://s3.amazonaws.com/longsight-patches/", "website with patch files")
+	localIP = flag.String("ip", "", "override automatic ip detection")
+	startupWaitSeconds = flag.Int("waitTime", 280, "amount of time to wait for Tomcat to startup")
+
+	flag.Parse()
+	if len(*token) < 1 {
+		fmt.Println("Please provide a valid security token")
+		os.Exit(1)
+	}
+
+	// Set log level
+	log.SetFormatter(&log.TextFormatter{})
+	switch strings.ToLower(*logLevel) {
+	case "debug":
+		log.SetLevel(log.DebugLevel)
+	case "info":
+		log.SetLevel(log.InfoLevel)
+	case "warn":
+		log.SetLevel(log.WarnLevel)
+	case "error":
+		log.SetLevel(log.ErrorLevel)
+	case "fatal":
+		log.SetLevel(log.FatalLevel)
+	case "panic":
+		log.SetLevel(log.PanicLevel)
+	default:
+		log.Warn("Unknown log level, defaulting to info")
+		log.SetLevel(log.InfoLevel)
+	}
 }
