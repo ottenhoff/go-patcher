@@ -5,6 +5,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMain(m *testing.M) {
@@ -101,4 +103,8 @@ func TestUnrollTarball(t *testing.T) {
 	if !reflect.DeepEqual(result, expected) {
 		t.Errorf("unrollTarball() returned unexpected result. Got: %v, Want: %v", result, expected)
 	}
+
+	assert.True(t, pathExists("components/sakai-provider-pack/WEB-INF/components.txt"))
+	assert.False(t, pathExists("components/sakai-provider-pack/WEB-INF/unboundid-ldap.xml"))
+	assert.False(t, pathExists("components/sakai-provider-pack/WEB-INF/components.xml"))
 }
