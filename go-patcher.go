@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -49,6 +50,7 @@ var localIP *string
 var startupWaitSeconds *int
 
 var propertyFiles = [4]string{"instance.properties", "dev.properties", "local.properties", "sakai.properties"}
+var skipPattern = regexp.MustCompile(`^components/sakai-provider-pack/WEB-INF/.*(unboundid|components|jldap).*\.xml$`)
 var patcherUID = uint32(os.Getuid())
 var outputBuffer bytes.Buffer
 
@@ -596,6 +598,12 @@ func unrollTarball(filePath string) map[string]int {
 				log.Debug("Tar file started with a dot: ", filename)
 			}
 
+			// Do not overwrite jldap-beans.xml or unboundid-ldap.xml
+			if shouldSkipFile(filename) {
+				log.Debug("Skipping file: ", filename)
+				continue
+			}
+
 			// See if there are any dirs we should wipe out
 			if len(filename) > len("components/a") {
 				splitPaths := strings.Split(filename, "/")
@@ -611,18 +619,6 @@ func unrollTarball(filePath string) map[string]int {
 						m[firstTwoPaths] = 1
 					}
 				}
-			}
-
-			// Do not overwrite jldap-beans.xml
-			if strings.Contains(filename, "jldap-bean") && pathExists(filename) {
-				log.Debug("Skipping JLDAP config:", filename)
-				continue
-			} else if strings.Contains(filename, "sakai-provider-pack/WEB-INF/unboundid") && pathExists(filename) {
-				log.Debug("Skipping Unboundid LDAP config:", filename)
-				continue
-			} else if strings.Contains(filename, "sakai-provider-pack/WEB-INF/components.xml") && pathExists(filename) {
-				log.Debug("Skipping providers components:", filename)
-				continue
 			}
 
 			writer, err := os.Create(filename)
@@ -647,6 +643,10 @@ func unrollTarball(filePath string) map[string]int {
 	}
 
 	return m
+}
+
+func shouldSkipFile(filename string) bool {
+	return skipPattern.MatchString(filename)
 }
 
 func checkForProcess(tomcatDir string) bool {
@@ -870,12 +870,14 @@ func replaceNumbers(s string) string {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	if err == nil {
-		return true
+		return true // The file exists
 	}
 	if os.IsNotExist(err) {
-		return false
+		return false // The file does not exist
 	}
-	return true
+	// Log other types of errors
+	log.Printf("Error checking if path exists: %v\n", err)
+	return false // Treat other errors as if the file does not exist
 }
 
 // Shortcut to check if the path is a directory
