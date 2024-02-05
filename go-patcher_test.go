@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -86,5 +87,18 @@ func TestShouldSkipFile(t *testing.T) {
 				t.Errorf("shouldSkipFile(%q) = %v, want %v", tt.filename, got, tt.want)
 			}
 		})
+	}
+}
+func TestUnrollTarball(t *testing.T) {
+
+	// Call the function under test
+	result := unrollTarball("test.tar.gz")
+
+	// Verify the result
+	expected := map[string]int{
+		"components/sakai-provider-pack": 2,
+	}
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("unrollTarball() returned unexpected result. Got: %v, Want: %v", result, expected)
 	}
 }
