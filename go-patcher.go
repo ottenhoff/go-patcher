@@ -321,6 +321,7 @@ func checkForUnnecessaryJars(tomcatDir string) {
 		oldIgniteHibernateCoreJar := ""
 		oldCommonsTextJar := ""
 		oldJaxbJar := ""
+		oldHttpCoreJar := ""
 		for _, tomcatFile := range tomcatFiles {
 			if strings.Contains(tomcatFile.Name(), "ignite-hibernate_5.3-") {
 				oldIgniteHibernateJar = tomcatFile.Name()
@@ -330,6 +331,8 @@ func checkForUnnecessaryJars(tomcatDir string) {
 				oldCommonsTextJar = tomcatFile.Name()
 			} else if strings.Contains(tomcatFile.Name(), "jaxb-impl-2") {
 				oldJaxbJar = tomcatFile.Name()
+			} else if strings.Contains(tomcatFile.Name(), "httpcore5-5.2.jar") {
+				oldHttpCoreJar = tomcatFile.Name()
 			}
 		}
 
@@ -364,6 +367,9 @@ func checkForUnnecessaryJars(tomcatDir string) {
 			} else if strings.Contains(tomcatFile.Name(), "jaxb-runtime-2.3.6.jar") && oldJaxbJar != "" {
 				os.Remove(tomcatDir + "/lib/" + oldJaxbJar)
 				log.Info("Removed " + tomcatDir + "/lib/" + oldJaxbJar)
+			} else if strings.Contains(tomcatFile.Name(), "httpcore5-5.2.3.jar") && oldHttpCoreJar != "" {
+				os.Remove(tomcatDir + "/lib/" + oldHttpCoreJar)
+				log.Info("Removed " + tomcatDir + "/lib/" + oldHttpCoreJar)
 			}
 		}
 	}
