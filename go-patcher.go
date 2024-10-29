@@ -122,7 +122,7 @@ func main() {
 
 		// Update the version to better cache bust
 		// We are going to save bytes and just use the last two digits of the patch ID
-		modifyPropertyFiles("portal.cdn.version="+patchID[len(patchID)-2:], patchID)
+		modifyPropertyFiles("portal.cdn.version="+patchID[len(patchID)-3:], patchID)
 	}
 
 	// Clean up the lib so we don't have dupe mysql-connector JARs
@@ -393,14 +393,26 @@ func fetchTarball(tarball string) string {
 		if err != nil {
 			panic("Could not download patch")
 		}
+		contentLength := resp.Header.Get("Content-Length")
+		if contentLength == "" {
+			log.Warn("No Content-Length header found on download")
+		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
 			n, err := io.Copy(fileWriter, resp.Body)
 			log.Debug("Copied remote file bytes: ", n)
+
 			if n > 0 && err != nil {
 				os.Remove(fullPath)
 				panic("Could not copy from web to local file system")
+			} else if n > 0 && contentLength != "" {
+				expectedSize, err := strconv.ParseInt(contentLength, 10, 64)
+				if err != nil {
+					log.Error("Error parsing Content-Length:", err)
+				} else if n != expectedSize {
+					panic("Downloaded bytes (" + strconv.FormatInt(n, 10) + ") is different from Content-Length: " + contentLength)
+				}
 			}
 		} else {
 			log.Error("Could not find patch.... proceeding", resp)
