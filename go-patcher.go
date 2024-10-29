@@ -278,7 +278,7 @@ func checkForUnnecessaryJars(tomcatDir string) {
 				}
 			}
 			// We dont use mariadb connector or terracotta
-			if strings.Contains(tomcatFile.Name(), "hsqldb") || strings.Contains(tomcatFile.Name(), "terracotta") || strings.Contains(tomcatFile.Name(), "hazelcast") {
+			if strings.Contains(tomcatFile.Name(), "mariadb") || strings.Contains(tomcatFile.Name(), "terracotta") || strings.Contains(tomcatFile.Name(), "hazelcast") {
 				os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
 				log.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
 				// Ignite/Hibernate modified some JARs mid-22.x
