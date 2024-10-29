@@ -9,11 +9,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        goos: [linux, windows, darwin]
+        goos: [linux, darwin]
         goarch: [arm64, amd64]
-        exclude:  
-          - goarch: arm64
-            goos: windows
     steps:
     - uses: actions/checkout@v4
     - uses: wangyoucao577/go-release-action@v1
