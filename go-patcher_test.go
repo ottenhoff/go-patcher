@@ -141,12 +141,12 @@ func TestModifyPropertyFiles(t *testing.T) {
 
 	// Test property modification
 	patchID := "63547"
-	modifyPropertyFiles("portal.cdn.version="+patchID[len(patchID)-2:], patchID)
+	modifyPropertyFiles("portal.cdn.version="+patchID[len(patchID)-3:], patchID)
 
 	// Verify modifications in sakai.properties
 	sakaiContent, _ := os.ReadFile("sakai/sakai.properties")
 	assert.Contains(t, string(sakaiContent), "#portal.cdn.version=")
-	assert.Contains(t, string(sakaiContent), "portal.cdn.version=47")
+	assert.Contains(t, string(sakaiContent), "portal.cdn.version=547")
 
 	// Verify local.properties is unchanged
 	localContent, _ := os.ReadFile("sakai/local.properties")
