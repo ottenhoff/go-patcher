@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -107,4 +108,48 @@ func TestUnrollTarball(t *testing.T) {
 	assert.True(t, pathExists("components/sakai-provider-pack/WEB-INF/components.txt"))
 	assert.False(t, pathExists("components/sakai-provider-pack/WEB-INF/unboundid-ldap.xml"))
 	assert.False(t, pathExists("components/sakai-provider-pack/WEB-INF/components.xml"))
+}
+
+func TestModifyPropertyFiles(t *testing.T) {
+	// Setup test directory structure
+	tmpDir := t.TempDir()
+	os.MkdirAll(tmpDir+"/sakai", 0755)
+	t.Logf("Test directory: %s", tmpDir)
+
+	// Copy test files from testdata directory
+	testFiles := []string{
+		"testdata/sakai.properties",
+		"testdata/local.properties",
+	}
+
+	for _, file := range testFiles {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("Failed to read test file %s: %v", file, err)
+		}
+		destPath := tmpDir + "/sakai/" + filepath.Base(file)
+		err = os.WriteFile(destPath, content, 0644)
+		if err != nil {
+			t.Fatalf("Failed to write test file %s: %v", destPath, err)
+		}
+	}
+
+	// Change working directory for test
+	originalWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(originalWd)
+
+	// Test property modification
+	patchID := "63547"
+	modifyPropertyFiles("portal.cdn.version="+patchID[len(patchID)-2:], patchID)
+
+	// Verify modifications in sakai.properties
+	sakaiContent, _ := os.ReadFile("sakai/sakai.properties")
+	assert.Contains(t, string(sakaiContent), "#portal.cdn.version=")
+	assert.Contains(t, string(sakaiContent), "portal.cdn.version=47")
+
+	// Verify local.properties is unchanged
+	localContent, _ := os.ReadFile("sakai/local.properties")
+	assert.Contains(t, string(localContent), "smtp.test=java")
+	assert.NotContains(t, string(localContent), "portal.cdn.version")
 }

@@ -23,7 +23,6 @@ import (
 	"syscall"
 	"time"
 
-	cp "github.com/cleversoap/go-cp"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -49,7 +48,7 @@ var patchWeb *string
 var localIP *string
 var startupWaitSeconds *int
 
-var propertyFiles = [4]string{"instance.properties", "dev.properties", "local.properties", "sakai.properties"}
+var propertyFiles = [4]string{"sakai.properties", "dev.properties", "local.properties", "instance.properties"}
 var skipPattern = regexp.MustCompile(`^components/sakai-provider-pack/WEB-INF/.*(unboundid|components|jldap).*\.xml$`)
 var patcherUID = uint32(os.Getuid())
 var outputBuffer bytes.Buffer
@@ -120,16 +119,17 @@ func main() {
 		} else {
 			applyTarballPatch(patchFiles)
 		}
-	}
 
-	// Special patch for vulnerable JSF version
-	patchJsfViewStateVulnerability(tomcatDir)
+		// Update the version to better cache bust
+		// We are going to save bytes and just use the last two digits of the patch ID
+		modifyPropertyFiles("portal.cdn.version="+patchID[len(patchID)-2:], patchID)
+	}
 
 	// Clean up the lib so we don't have dupe mysql-connector JARs
 	checkForUnnecessaryJars(tomcatDir)
 
 	// Time to start up Tomcat
-	startTomcat(tomcatDir, patchID)
+	startTomcat(patchID)
 
 	// Check for server startup in logs/catalina.out after 40 seconds
 	time.Sleep(40 * 1000 * time.Millisecond)
@@ -202,76 +202,6 @@ func updateAdminPortal(rv string, startup string, patchID string) {
 
 	if err != nil {
 		panic("Could not POST update")
-	}
-}
-
-func patchJsfViewStateVulnerability(tomcatDir string) {
-	// First fetch the files
-	fetchPatchedJsfLibs()
-
-	unpatchedJars := []string{"jsf-impl-1.2_15.jar", "jsf-api-1.2_15.jar"}
-
-	sakaiPaths := []string{
-		"webapps/sakai-syllabus-tool/WEB-INF/lib/",
-		"webapps/adobeconnect-tool/WEB-INF/lib/",
-		"webapps/sakai-signup-tool/WEB-INF/lib/",
-		"webapps/samigo-app/WEB-INF/lib/",
-	}
-
-	for _, sakaiPath := range sakaiPaths {
-		for _, unpatchedJar := range unpatchedJars {
-			oldJar := tomcatDir + string(os.PathSeparator) + sakaiPath + unpatchedJar
-			newJarName := strings.Replace(unpatchedJar, "1.2_15", "1.2_15-06", 1)
-			newJarTempPath := *patchDir + string(os.PathSeparator) + newJarName
-			newJarDestPath := tomcatDir + string(os.PathSeparator) + sakaiPath + newJarName
-
-			if pathExists(oldJar) && pathExists(newJarTempPath) {
-				cp.Copy(newJarTempPath, newJarDestPath)
-				if pathExists(newJarDestPath) {
-					log.Debug("Replaced JSF jar with new file: " + newJarDestPath)
-					os.Remove(oldJar)
-				}
-			}
-		}
-	}
-
-}
-
-func fetchPatchedJsfLibs() {
-	patchedLibs := []string{
-		"https://longsight-patches.s3.amazonaws.com/patches/jsf/jsf-impl-1.2_15-06.jar",
-		"https://longsight-patches.s3.amazonaws.com/patches/jsf/jsf-api-1.2_15-06.jar",
-	}
-
-	for _, mavenPath := range patchedLibs {
-		fileName := path.Base(mavenPath)
-		fullPath := *patchDir + string(os.PathSeparator) + fileName
-
-		if !pathExists(fullPath) {
-			fileWriter, err := os.Create(fullPath)
-			if err != nil {
-				panic("Could not open file: " + fullPath)
-			}
-			defer fileWriter.Close()
-
-			resp, err := http.Get(mavenPath)
-			log.Debug("Trying to fetch patch: " + mavenPath)
-			if err != nil {
-				log.Error("Could not download JSF file: " + mavenPath)
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode == http.StatusOK {
-				n, err := io.Copy(fileWriter, resp.Body)
-				log.Debug("Copied remote file bytes: ", n)
-				if n > 0 && err != nil {
-					os.Remove(fullPath)
-					log.Error("Could not copy from Maven central to local file system")
-				}
-			} else {
-				log.Error("Could not find JSF JAR .... proceeding", resp)
-			}
-		}
 	}
 }
 
@@ -348,7 +278,7 @@ func checkForUnnecessaryJars(tomcatDir string) {
 				}
 			}
 			// We dont use mariadb connector or terracotta
-			if strings.Contains(tomcatFile.Name(), "mariadb") || strings.Contains(tomcatFile.Name(), "terracotta") {
+			if strings.Contains(tomcatFile.Name(), "hsqldb") || strings.Contains(tomcatFile.Name(), "terracotta") || strings.Contains(tomcatFile.Name(), "hazelcast") {
 				os.Remove(tomcatDir + "/lib/" + tomcatFile.Name())
 				log.Debug("Removed " + tomcatDir + "/lib/" + tomcatFile.Name())
 				// Ignite/Hibernate modified some JARs mid-22.x
@@ -403,8 +333,9 @@ func checkServerStartup() string {
 	return "false"
 }
 
-func startTomcat(tomcatDir string, patchID string) {
+func startTomcat(patchID string) {
 	// Move the old catalina.out so we can look for the ServerStatup cleanly
+	// TODO: gzip the old log file
 	os.Rename("logs/catalina.out", "logs/catalina.out-pre-patch-"+patchID)
 
 	out, _ := exec.Command("bin/catalina.sh", "start").CombinedOutput()
@@ -802,6 +733,7 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 		addedTheNewProperty := false
 
 		// Loop through all known property file names
+		lastValidPropertyFile := ""
 		for _, propertyFile := range propertyFiles {
 			fileModified := false
 			propertyFilePath := "sakai/" + propertyFile
@@ -810,7 +742,9 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 				input, err := os.ReadFile(propertyFilePath)
 				if err != nil {
 					log.Error("Could not open property file: " + propertyFilePath)
+					continue
 				}
+				lastValidPropertyFile = propertyFilePath
 
 				lines := strings.Split(string(input), "\n")
 				for i, line := range lines {
@@ -818,26 +752,41 @@ func modifyPropertyFiles(rawProperties string, patchID string) {
 						if !strings.Contains(line, "#"+newPropertyKey) {
 							log.Debug("Found property key: " + line)
 							lines[i] = "#" + line
+							lines = append(lines[:i+1], append([]string{newPropertyLine}, lines[i+1:]...)...)
 							fileModified = true
+							addedTheNewProperty = true
 						}
 					}
 				}
 
-				output := strings.Join(lines, "\n")
-				if !addedTheNewProperty {
-					output += "\n# Longsight patch ID: " + patchID
-					output += "\n" + newPropertyLine
-					log.Debug("Added new line to file: "+propertyFilePath, newPropertyLine)
-					fileModified = true
-					addedTheNewProperty = true
-				}
-
 				if fileModified {
+					output := strings.Join(lines, "\n")
 					err = os.WriteFile(propertyFilePath, []byte(output), 0644)
 					if err != nil {
 						log.Error("Could not write revised file: " + propertyFilePath)
 					}
 				}
+			}
+		}
+
+		// This is a brand-new property that we need to add to the last valid property file
+		if !addedTheNewProperty && lastValidPropertyFile != "" {
+			input, err := os.ReadFile(lastValidPropertyFile)
+			if err != nil {
+				log.Error("Could not open property file for new property: " + lastValidPropertyFile)
+				continue
+			}
+
+			lines := strings.Split(string(input), "\n")
+			lines = append(lines, "# Longsight patch ID: "+patchID+" ("+time.Now().Format("2006-01-02 15:04:05")+")")
+			lines = append(lines, newPropertyLine)
+
+			output := strings.Join(lines, "\n")
+			err = os.WriteFile(lastValidPropertyFile, []byte(output), 0644)
+			if err != nil {
+				log.Error("Could not write new property to file: " + lastValidPropertyFile)
+			} else {
+				log.Debug("Added new line to file: "+lastValidPropertyFile, newPropertyLine)
 			}
 		}
 	}

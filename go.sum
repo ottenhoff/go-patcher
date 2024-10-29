@@ -1,5 +1,3 @@
-github.com/cleversoap/go-cp v0.0.0-20140728221909-c1540332ed3e h1:Cgwu/qjNrSn57a1zdTwKJQ8UhzsbU0V5BofFVrk5gfo=
-github.com/cleversoap/go-cp v0.0.0-20140728221909-c1540332ed3e/go.mod h1:9VGT5cP2QO6FlW/ACUJvKCq/XeLFDK6LAh+dHGjI7m0=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
