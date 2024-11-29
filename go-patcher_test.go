@@ -93,6 +93,23 @@ func TestShouldSkipFile(t *testing.T) {
 	}
 }
 func TestUnrollTarball(t *testing.T) {
+	// Create directory structure and file with XML content
+	err := os.MkdirAll("components/sakai-provider-pack/WEB-INF", 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test directory structure: %v", err)
+	}
+
+	xmlContent := `<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+    <bean id="myBean" class="com.example.MyClass">
+        <property name="someProperty" value="someValue"/>
+    </bean>
+</beans>`
+
+	err = os.WriteFile("components/sakai-provider-pack/WEB-INF/unboundid-ldap.xml", []byte(xmlContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
 
 	// Call the function under test
 	result := unrollTarball("test.tar.gz")
@@ -105,9 +122,18 @@ func TestUnrollTarball(t *testing.T) {
 		t.Errorf("unrollTarball() returned unexpected result. Got: %v, Want: %v", result, expected)
 	}
 
+	// Verify the XML file still exists and contains our content
+	content, err := os.ReadFile("components/sakai-provider-pack/WEB-INF/unboundid-ldap.xml")
+	if err != nil {
+		t.Errorf("Failed to read XML file: %v", err)
+	}
+	if string(content) != xmlContent {
+		t.Errorf("XML file was overwritten. Got: %s, Want: %s", string(content), xmlContent)
+	}
+
 	assert.True(t, pathExists("components/sakai-provider-pack/WEB-INF/components.txt"))
-	assert.False(t, pathExists("components/sakai-provider-pack/WEB-INF/unboundid-ldap.xml"))
-	assert.False(t, pathExists("components/sakai-provider-pack/WEB-INF/components.xml"))
+	// No file existed so it should be created
+	assert.True(t, pathExists("components/sakai-provider-pack/WEB-INF/components.xml"))
 }
 
 func TestModifyPropertyFiles(t *testing.T) {
