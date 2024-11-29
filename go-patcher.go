@@ -547,8 +547,8 @@ func unrollTarball(filePath string) map[string]int {
 				log.Debug("Tar file started with a dot: ", filename)
 			}
 
-			// Do not overwrite jldap-beans.xml or unboundid-ldap.xml
-			if shouldSkipFile(filename) {
+			// Do not overwrite an existing jldap-beans.xml or unboundid-ldap.xml or components.xml
+			if shouldSkipFile(filename) && pathExists(filename) {
 				log.Debug("Skipping file: ", filename)
 				continue
 			}
