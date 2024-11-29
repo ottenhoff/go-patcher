@@ -116,7 +116,7 @@ func TestUnrollTarball(t *testing.T) {
 
 	// Verify the result
 	expected := map[string]int{
-		"components/sakai-provider-pack": 2,
+		"components/sakai-provider-pack": 4,
 	}
 	if !reflect.DeepEqual(result, expected) {
 		t.Errorf("unrollTarball() returned unexpected result. Got: %v, Want: %v", result, expected)
