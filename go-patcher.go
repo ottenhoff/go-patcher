@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -496,16 +497,21 @@ func unrollTarball(filePath string) map[string]int {
 	m = make(map[string]int)
 
 	file, err := os.Open(filePath)
-
 	if err != nil {
 		panic("Could not open patch: " + filePath)
 	}
-
 	defer file.Close()
 
 	var fileReader io.ReadCloser = file
 
-	if strings.HasSuffix(filePath, ".gz") {
+	if strings.HasSuffix(filePath, ".zst") {
+		decoder, err := zstd.NewReader(file)
+		if err != nil {
+			panic("Could not create zstd reader")
+		}
+		defer decoder.Close()
+		fileReader = io.NopCloser(decoder)
+	} else if strings.HasSuffix(filePath, ".gz") {
 		if fileReader, err = gzip.NewReader(file); err != nil {
 			panic("Could not read GZIP")
 		}
